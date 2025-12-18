@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "ba3a15c5b1be2d22270990a6e210b114"
-name = "Estimated Delivery Dates"
+name = "Checkout App Dista"
 application_url = "https://tsunami-pointing-holiday-generally.trycloudflare.com"
 embedded = true
 
