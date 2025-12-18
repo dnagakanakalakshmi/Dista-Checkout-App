@@ -1,7 +1,7 @@
 # values.yaml
 replicaCount: 1
 image:
-  repository: 518569466516.dkr.ecr.us-east-1.amazonaws.com/backend-access-shopify-app
+  repository: 518569466516.dkr.ecr.us-east-1.amazonaws.com/shopify_app_dista_checkout
   pullPolicy: IfNotPresent
   tag: "f9dfcb3"
 
@@ -10,7 +10,7 @@ env: "dev"
 # Environment variables for the application
 envVars:
   NODE_ENV: "production"
-  SHOPIFY_APP_URL: "https://backend-access-shopify-app.dista.care"
+  SHOPIFY_APP_URL: "https://shopify_app_dista_checkout.dista.care"
   # Add your environment variables here:
   # DATABASE_URL: "postgresql://user:password@host:5432/dbname"
   # SHOPIFY_API_KEY: "your-api-key"
@@ -25,14 +25,14 @@ fullnameOverride: ""
 
 serviceAccount:
   enabled: true
-  annotation: arn:aws:iam::518569466516:role/backend-access-shopify-app
+  annotation: arn:aws:iam::518569466516:role/shopify_app_dista_checkout
 
 # Ingress configuration for AWS ALB
 ingress:
   enabled: true
   certificateArn: arn:aws:acm:us-east-1:518569466516:certificate/4cc1d4ac-b19d-442b-8405-12e81cbafda9
   hosts:
-    - host: backend-access-shopify-app.dista.care
+    - host: shopify_app_dista_checkout.dista.care
       path: /
       pathType: Prefix
   # Optional: Customize health check settings
@@ -52,7 +52,7 @@ awsSecretsManager:
   region: "us-east-1"
   # Single secret per app containing all credentials as JSON
   # Expected keys: shopify_api_key, shopify_api_secret, scopes, database_url, mongo_password, etc.
-  secretName: "backend-access-shopify-app-secrets"
+  secretName: "shopify_app_dista_checkout-secrets"
 
 # Legacy Kubernetes Secrets configuration (fallback if AWS Secrets Manager not used)
 # Set secrets.enabled to true and provide values below
