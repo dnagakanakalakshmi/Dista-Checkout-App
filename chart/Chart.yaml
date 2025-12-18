@@ -1,0 +1,5 @@
+# chart.yaml
+apiVersion: v2
+name: backend-access-shopify-app
+description: A Helm chart for shopify service
+version: 0.1.0

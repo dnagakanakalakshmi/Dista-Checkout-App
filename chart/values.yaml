@@ -1,0 +1,80 @@
+# values.yaml
+replicaCount: 1
+image:
+  repository: 518569466516.dkr.ecr.us-east-1.amazonaws.com/backend-access-shopify-app
+  pullPolicy: IfNotPresent
+  tag: "f9dfcb3"
+
+env: "dev"
+
+# Environment variables for the application
+envVars:
+  NODE_ENV: "production"
+  SHOPIFY_APP_URL: "https://backend-access-shopify-app.dista.care"
+  # Add your environment variables here:
+  # DATABASE_URL: "postgresql://user:password@host:5432/dbname"
+  # SHOPIFY_API_KEY: "your-api-key"
+  # SHOPIFY_API_SECRET: "your-api-secret"
+  # SCOPES: "write_products,read_orders"
+
+service:
+  type: ClusterIP
+  port: 80
+
+fullnameOverride: ""
+
+serviceAccount:
+  enabled: true
+  annotation: arn:aws:iam::518569466516:role/backend-access-shopify-app
+
+# Ingress configuration for AWS ALB
+ingress:
+  enabled: true
+  certificateArn: arn:aws:acm:us-east-1:518569466516:certificate/4cc1d4ac-b19d-442b-8405-12e81cbafda9
+  hosts:
+    - host: backend-access-shopify-app.dista.care
+      path: /
+      pathType: Prefix
+  # Optional: Customize health check settings
+  # healthCheckPath: /
+  # healthCheckIntervalSeconds: 30
+  # healthCheckTimeoutSeconds: 5
+  # healthCheckHealthyThresholdCount: 2
+  # healthCheckUnhealthyThresholdCount: 2
+  # Optional: Additional load balancer attributes (comma-separated key=value pairs)
+  # loadBalancerAttributes: "idle_timeout.timeout_seconds=60"
+
+# AWS Secrets Manager configuration
+# The application will read secrets from AWS Secrets Manager using IAM role
+# Make sure your service account IAM role has permissions to read these secrets
+awsSecretsManager:
+  enabled: true
+  region: "us-east-1"
+  # Single secret per app containing all credentials as JSON
+  # Expected keys: shopify_api_key, shopify_api_secret, scopes, database_url, mongo_password, etc.
+  secretName: "backend-access-shopify-app-secrets"
+
+# Legacy Kubernetes Secrets configuration (fallback if AWS Secrets Manager not used)
+# Set secrets.enabled to true and provide values below
+# These will be stored as Kubernetes Secrets
+secrets:
+  enabled: false
+  # Database connection string (PostgreSQL)
+  # databaseUrl: "postgresql://user:password@host:5432/dbname"
+  
+  # Shopify API credentials
+  # shopifyApiKey: "your-shopify-api-key"
+  # shopifyApiSecret: "your-shopify-api-secret"
+  # scopes: "write_products,read_orders"
+  
+  # MongoDB connection string (if needed)
+  # mongodbUrl: "mongodb://user:password@host:27017/dbname"
+
+# Resource limits and requests (uncomment to enable)
+# resources:
+#   limits:
+#     cpu: 1000m
+#     memory: 1Gi
+#   requests:
+#     cpu: 500m
+#     memory: 512Mi

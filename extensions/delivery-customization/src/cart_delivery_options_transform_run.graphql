@@ -1,0 +1,36 @@
+query CartDeliveryOptionsTransformRunInput {
+  cart {
+    deliveryGroups {
+      id
+      deliveryAddress {
+        countryCode
+      }
+      deliveryOptions {
+        handle
+        title
+        description
+      }
+    }
+      lines {
+        id
+        quantity
+        merchandise {
+          ... on ProductVariant {
+            id
+            metafield(namespace: "distacart", key: "product_ready_to_ship") {
+              jsonValue
+            }
+          }
+        }
+      }
+  }
+
+  shop {
+    localTime{
+      date
+    }
+    metafield(namespace: "distacart", key: "delivery_templates") {
+      value
+    }
+  }
+}
