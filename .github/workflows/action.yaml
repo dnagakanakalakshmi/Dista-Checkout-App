@@ -93,5 +93,5 @@ jobs:
       - name: Deploy to Kubernetes
         working-directory: chart
         run: |
-          helm upgrade -i shopify_app_dista_checkout . -n shopify_app_dista_checkout --create-namespace --set image.tag=${{ steps.image-tag.outputs.tag }} -f values.yaml
+          helm upgrade -i shopify-app-dista-checkout . -n shopify-app-dista-checkout --create-namespace --set image.tag=${{ steps.image-tag.outputs.tag }} -f values.yaml
         if: ${{ github.event_name != 'pull_request' }}

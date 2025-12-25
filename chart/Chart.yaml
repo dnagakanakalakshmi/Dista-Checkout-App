@@ -1,5 +1,5 @@
 # chart.yaml
 apiVersion: v2
-name: shopify_app_dista_checkout
+name: shopify-app-dista-checkout
 description: A Helm chart for shopify service
 version: 0.1.0
