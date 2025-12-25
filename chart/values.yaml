@@ -1,7 +1,7 @@
 # values.yaml
 replicaCount: 1
 image:
-  repository: 518569466516.dkr.ecr.us-east-1.amazonaws.com/shopify-app-dista-checkout
+  repository: 518569466516.dkr.ecr.us-east-1.amazonaws.com/shopify_app_dista_checkout
   pullPolicy: IfNotPresent
   tag: "f9dfcb3"
 
