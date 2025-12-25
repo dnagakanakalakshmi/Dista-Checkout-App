@@ -25,7 +25,7 @@ fullnameOverride: ""
 
 serviceAccount:
   enabled: true
-  annotation: arn:aws:iam::518569466516:role/shopify-app-dista-checkout
+  annotation: arn:aws:iam::518569466516:role/shopify_app_dista_checkout
 
 # Ingress configuration for AWS ALB
 ingress:
@@ -52,7 +52,7 @@ awsSecretsManager:
   region: "us-east-1"
   # Single secret per app containing all credentials as JSON
   # Expected keys: shopify_api_key, shopify_api_secret, scopes, database_url, mongo_password, etc.
-  secretName: "shopify-app-dista-checkout-secrets"
+  secretName: "shopify_app_dista_checkout-secrets"
 
 # Legacy Kubernetes Secrets configuration (fallback if AWS Secrets Manager not used)
 # Set secrets.enabled to true and provide values below

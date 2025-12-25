@@ -54,7 +54,7 @@ async function getSecret(secretName) {
 
 /**
  * Get all app secrets with caching
- * Uses a single secret per app: "shopify-app-dista-checkout-secrets"
+ * Uses a single secret per app: "shopify_app_dista_checkout-secrets"
  * Expected keys: shopify_api_key, shopify_api_secret, scopes, database_url, mongo_password, etc.
  * @returns {Promise<Object>} All secret values
  */
