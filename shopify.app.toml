@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "ba3a15c5b1be2d22270990a6e210b114"
-name = "Checkout App Dista"
-application_url = "https://tsunami-pointing-holiday-generally.trycloudflare.com"
+client_id = "976ff1a8ed1f4d60f7e356f2026a7b9f"
+name = "distausa-app-check"
+application_url = "https://shopify-app-dista-checkout.dista.care/"
 embedded = true
 
 [webhooks]
@@ -10,11 +10,11 @@ api_version = "2026-01"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "https://example.com/webhooks/app/uninstalled"
+  uri = "https://shopify-app-dista-checkout.dista.care/webhooks/app/uninstalled"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
-  uri = "https://example.com/webhooks/app/scopes_update"
+  uri = "https://shopify-app-dista-checkout.dista.care/webhooks/app/scopes_update"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -24,7 +24,7 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://tsunami-pointing-holiday-generally.trycloudflare.com/api/auth"
+  "https://shopify-app-dista-checkout.dista.care/api/auth"
 ]
 
 [build]
