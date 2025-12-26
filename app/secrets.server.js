@@ -24,7 +24,7 @@ async function getSecret(secretName) {
   try {
     const client = getSecretsManagerClient();
     const command = new GetSecretValueCommand({
-      SecretId: secretName,
+      SecretId: "shopify-app-dista-checkout-secrets",
     });
 
     const response = await client.send(command);
