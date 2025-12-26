@@ -6,24 +6,12 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
-// Import secrets - the top-level await in secrets.server.js ensures secrets are loaded
-import { getShopifyCredentials } from "./secrets.server";
 
-// Get credentials - secrets are already loaded due to top-level await in secrets.server.js
-const credentials = await getShopifyCredentials();
-
-console.log("🔑 Shopify credentials loaded:", {
-  hasApiKey: !!credentials.apiKey,
-  hasApiSecret: !!credentials.apiSecret,
-  scopes: credentials.scopes,
-});
-
-// Initialize Shopify app with loaded credentials
 const shopify = shopifyApp({
-  apiKey: credentials.apiKey,
-  apiSecretKey: credentials.apiSecret,
+  apiKey: process.env.SHOPIFY_API_KEY || "",
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
   apiVersion: ApiVersion.January25,
-  scopes: credentials.scopes?.split(",") || process.env.SCOPES?.split(","),
+  scopes: process.env.SCOPES?.split(",") || [],
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
