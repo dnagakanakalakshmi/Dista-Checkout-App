@@ -20,8 +20,8 @@ function getCredentialsSync() {
 
   // Return environment variables as fallback
   return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
-    apiSecret: process.env.SHOPIFY_API_SECRET || "",
+    shopify-api-key: process.env.SHOPIFY_API_KEY || "",
+    shopify-access-secret: process.env.SHOPIFY_API_SECRET || "",
     scopes: process.env.SCOPES || "",
   };
 }
@@ -43,8 +43,8 @@ if (process.env.AWS_APP_SECRET_NAME) {
 // Initialize Shopify app
 const credentials = getCredentialsSync();
 const shopify = shopifyApp({
-  apiKey: credentials.apiKey,
-  apiSecretKey: credentials.apiSecret,
+  apiKey: credentials.shopify-api-key,
+  apiSecretKey: credentials.shopify-access-secret,
   apiVersion: ApiVersion.January25,
   scopes: credentials.scopes?.split(",") || process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
