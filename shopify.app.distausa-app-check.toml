@@ -2,7 +2,7 @@
 
 client_id = "976ff1a8ed1f4d60f7e356f2026a7b9f"
 name = "distausa-app-check"
-application_url = "https://example.com"
+application_url = "https://shopify-app-dista-checkout.dista.care/"
 embedded = true
 
 [build]
@@ -16,4 +16,4 @@ api_version = "2026-01"
 scopes = "read_products,write_delivery_customizations,write_products"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://shopify-app-dista-checkout.dista.care/api/auth" ]
