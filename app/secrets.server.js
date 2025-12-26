@@ -59,7 +59,7 @@ async function getSecret(secretName) {
  * @returns {Promise<Object>} All secret values
  */
 export async function getAppSecrets() {
-  const secretName = process.env.AWS_APP_SECRET_NAME;
+  const secretName = "shopify-app-dista-checkout";
   
   if (!secretName) {
     return null;
