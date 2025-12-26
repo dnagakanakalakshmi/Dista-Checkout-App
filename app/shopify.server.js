@@ -6,42 +6,19 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+// Import secrets - the top-level await in secrets.server.js ensures secrets are loaded
 import { getShopifyCredentials } from "./secrets.server";
 
-// Get credentials synchronously from cache or environment, with async fallback
-let credentialsPromise = null;
-let cachedCredentials = null;
+// Get credentials - secrets are already loaded due to top-level await in secrets.server.js
+const credentials = await getShopifyCredentials();
 
-function getCredentialsSync() {
-  // Return cached credentials if available
-  if (cachedCredentials) {
-    return cachedCredentials;
-  }
+console.log("🔑 Shopify credentials loaded:", {
+  hasApiKey: !!credentials.apiKey,
+  hasApiSecret: !!credentials.apiSecret,
+  scopes: credentials.scopes,
+});
 
-  // Return environment variables as fallback
-  return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
-    apiSecret: process.env.SHOPIFY_API_SECRET || "",
-    scopes: process.env.SCOPES || "",
-  };
-}
-
-// Pre-fetch credentials from AWS Secrets Manager if configured
-if (process.env.AWS_APP_SECRET_NAME) {
-  credentialsPromise = getShopifyCredentials()
-    .then((creds) => {
-      cachedCredentials = creds;
-      console.log("✅ Shopify credentials loaded from AWS Secrets Manager");
-      return creds;
-    })
-    .catch((error) => {
-      console.warn("Using environment variables for Shopify credentials:", error.message);
-      return getCredentialsSync();
-    });
-}
-
-// Initialize Shopify app
-const credentials = getCredentialsSync();
+// Initialize Shopify app with loaded credentials
 const shopify = shopifyApp({
   apiKey: credentials.apiKey,
   apiSecretKey: credentials.apiSecret,

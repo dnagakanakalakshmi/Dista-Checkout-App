@@ -5,6 +5,9 @@ let secretsCache = null;
 let secretsCacheExpiry = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Promise for initial secrets load (used for ensuring secrets are ready)
+let initialLoadPromise = null;
+
 /**
  * Get AWS Secrets Manager client
  * Uses IAM role credentials when running in EKS, or AWS credentials from environment
@@ -80,6 +83,52 @@ export async function getAppSecrets() {
   secretsCacheExpiry = now + CACHE_TTL;
 
   return secret;
+}
+
+/**
+ * Initialize secrets at app startup - call this before using any secrets
+ * Uses top-level await pattern for proper sequencing
+ * @returns {Promise<Object|null>} The loaded secrets or null
+ */
+export async function initializeSecrets() {
+  const secretName = process.env.AWS_APP_SECRET_NAME;
+  
+  if (!secretName) {
+    console.log("ℹ️ No AWS_APP_SECRET_NAME configured, using environment variables");
+    return null;
+  }
+
+  // If already loading, return the existing promise
+  if (initialLoadPromise) {
+    return initialLoadPromise;
+  }
+
+  console.log("=".repeat(60));
+  console.log("🚀 App starting - fetching secrets from AWS Secrets Manager...");
+  console.log("AWS_APP_SECRET_NAME:", secretName);
+  console.log("=".repeat(60));
+
+  initialLoadPromise = getAppSecrets()
+    .then((secrets) => {
+      console.log("=".repeat(60));
+      console.log("🔐 All secrets loaded from AWS Secrets Manager:");
+      console.log("=".repeat(60));
+      console.log("Secret keys:", Object.keys(secrets || {}));
+      // Don't log full secrets in production for security
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Full secrets:", JSON.stringify(secrets, null, 2));
+      }
+      console.log("=".repeat(60));
+      return secrets;
+    })
+    .catch((error) => {
+      console.error("❌ Failed to fetch secrets from AWS:", error.message);
+      console.error("Stack:", error.stack);
+      // Don't throw - allow fallback to env vars
+      return null;
+    });
+
+  return initialLoadPromise;
 }
 
 /**
@@ -207,4 +256,9 @@ export async function getMongoDbUrl() {
 export function clearSecretsCache() {
   secretsCache = null;
   secretsCacheExpiry = null;
+  initialLoadPromise = null;
 }
+
+// Initialize secrets at module load using top-level await
+// This ensures secrets are loaded before any other module can use them
+await initializeSecrets();
