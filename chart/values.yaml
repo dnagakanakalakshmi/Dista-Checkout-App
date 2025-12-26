@@ -52,7 +52,7 @@ awsSecretsManager:
   region: "us-east-1"
   # Single secret per app containing all credentials as JSON
   # Expected keys: shopify_api_key, shopify_api_secret, scopes, database_url, mongo_password, etc.
-  secretName: "shopify_app_dista_checkout-secrets"
+  secretName: "shopify-app-dista-checkout-secrets"
 
 # Legacy Kubernetes Secrets configuration (fallback if AWS Secrets Manager not used)
 # Set secrets.enabled to true and provide values below
