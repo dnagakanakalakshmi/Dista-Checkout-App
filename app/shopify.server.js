@@ -43,8 +43,8 @@ if (process.env.AWS_APP_SECRET_NAME) {
 // Initialize Shopify app
 const credentials = getCredentialsSync();
 const shopify = shopifyApp({
-  apiKey: credentials."shopify-api-key",
-  apiSecretKey: credentials."shopify-access-secret",
+  apiKey: credentials.shopify-api-key,
+  apiSecretKey: credentials.shopify-access-secret,
   apiVersion: ApiVersion.January25,
   scopes: credentials.scopes?.split(",") || process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
