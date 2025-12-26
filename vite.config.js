@@ -66,8 +66,17 @@ export default defineConfig({
   ],
   build: {
     assetsInlineLimit: 0,
+    target: "esnext",
+  },
+  esbuild: {
+    supported: {
+      "top-level-await": true,
+    },
   },
   optimizeDeps: {
     include: ["@shopify/app-bridge-react", "@shopify/polaris"],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
 });
