@@ -96,8 +96,8 @@ export async function getShopifyCredentials() {
       
       if (typeof secret === "object" && secret !== null) {
         return {
-          apiKey: secret.shopify-api-key || "",
-          apiSecret: secret.shopify-api-secret || "",
+          apiKey: secret.shopify_api_key || "",
+          apiSecret: secret.shopify_api_secret || "",
           scopes: secret.scopes || "",
         };
       }
