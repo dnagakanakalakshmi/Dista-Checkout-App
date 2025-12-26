@@ -25,7 +25,7 @@ fullnameOverride: ""
 
 serviceAccount:
   enabled: true
-  annotation: arn:aws:iam::518569466516:role/shopify_app_dista_checkout
+  annotation: arn:aws:iam::518569466516:role/backend-access-shopify-app
 
 # Ingress configuration for AWS ALB
 ingress:
