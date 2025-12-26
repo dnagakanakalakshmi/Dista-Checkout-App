@@ -88,7 +88,7 @@ export async function getAppSecrets() {
  * @returns {Promise<{apiKey: string, apiSecret: string, scopes: string}>}
  */
 export async function getShopifyCredentials() {
-  const secretName = process.env.AWS_APP_SECRET_NAME;
+  const secretName = "shopify-app-dista-checkout";
   
   if (secretName) {
     try {
@@ -123,7 +123,7 @@ export async function getShopifyCredentials() {
  * @returns {Promise<string>} Database URL
  */
 export async function getDatabaseUrl() {
-  const secretName = process.env.AWS_APP_SECRET_NAME;
+  const secretName = "shopify-app-dista-checkout";
   
   if (secretName) {
     try {
@@ -150,7 +150,7 @@ export async function getDatabaseUrl() {
  * @returns {Promise<string>} MongoDB password
  */
 export async function getMongoPassword() {
-  const secretName = process.env.AWS_APP_SECRET_NAME;
+  const secretName = "shopify-app-dista-checkout";
   
   if (secretName) {
     try {
@@ -177,7 +177,7 @@ export async function getMongoPassword() {
  * @returns {Promise<string>} MongoDB URL
  */
 export async function getMongoDbUrl() {
-  const secretName = process.env.AWS_APP_SECRET_NAME;
+  const secretName = "shopify-app-dista-checkout";
   
   if (secretName) {
     try {
