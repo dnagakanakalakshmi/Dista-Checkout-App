@@ -1,20 +1,23 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "976ff1a8ed1f4d60f7e356f2026a7b9f"
-name = "distausa-app-check"
+name = "Dista Checkout App"
 application_url = "https://shopify-app-dista-checkout.dista.care/"
 embedded = true
 
-[webhooks]
-api_version = "2026-01"
+[build]
+automatically_update_urls_on_dev = true
 
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "https://shopify-app-dista-checkout.dista.care/webhooks/app/uninstalled"
+[webhooks]
+api_version = "2025-10"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
-  uri = "https://shopify-app-dista-checkout.dista.care/webhooks/app/scopes_update"
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -24,8 +27,7 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://shopify-app-dista-checkout.dista.care/api/auth"
+  "https://shopify-app-dista-checkout.dista.care/auth",
+  "https://shopify-app-dista-checkout.dista.care/auth/callback",
+  "https://shopify-app-dista-checkout.dista.care/auth/shopify/callback"
 ]
-
-[build]
-automatically_update_urls_on_dev = true
