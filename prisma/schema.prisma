@@ -10,7 +10,7 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "mongodb"
-  url      = "mongodb+srv://naga:naga0804@cluster0.esec6.mongodb.net/DistaApps?retryWrites=true&w=majority&appName=Cluster0"
+  url      = "mongodb+srv://naga:naga0804@cluster0.esec6.mongodb.net/Testing?retryWrites=true&w=majority&appName=Cluster0"
 }
 
 model Session {
