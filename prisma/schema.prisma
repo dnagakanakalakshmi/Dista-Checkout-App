@@ -15,7 +15,7 @@ datasource db {
 
 model Session {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  shop          String   @index
+  shop          String   
   state         String
   isOnline      Boolean  @default(false)
   scope         String?
