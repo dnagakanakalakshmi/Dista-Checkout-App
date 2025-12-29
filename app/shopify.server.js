@@ -8,6 +8,42 @@ import "./secrets.server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
+
+////////testing connection session 
+
+async function createSession() {
+  const session = await prisma.session.create({
+    data: {
+      shop: "distacart.myshopify.com",
+      state: "nonce_state_value",
+      isOnline: false,
+      scope: "read_products,write_orders",
+      accessToken: "shpat_xxx",
+
+      userId: "123456789",
+      firstName: "John",
+      lastName: "Doe",
+      email: "john@store.com",
+
+      accountOwner: true,
+      locale: "en",
+      collaborator: false,
+      emailVerified: true
+    }
+  });
+
+  console.log("Session created:", session);
+}
+
+createSession()
+  .catch(console.error)
+  .finally(async () => {
+    //await prisma.$disconnect();
+  });
+
+////////testing connection session end  
+
+
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY || "",
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
