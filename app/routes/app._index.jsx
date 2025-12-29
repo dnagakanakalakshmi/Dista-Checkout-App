@@ -8,23 +8,19 @@ import {
   Box,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
+
+import { json } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
-  console.log("[DEBUG] app._index.jsx loader called");
-  console.log("[DEBUG] DATABASE_URL:", process.env.DATABASE_URL || "NOT SET");
-  try {
-    await authenticate.admin(request);
-    console.log("[DEBUG] Admin authenticated successfully");
-  } catch (err) {
-    console.error("[ERROR] Admin authentication failed:", err);
-    throw err;
-  }
-  return null;
+  await authenticate.admin(request);
+  const dbUrl = process.env.DATABASE_URL || "NOT SET";
+  return json({ dbUrl });
 };
 
 export default function Index() {
-  console.log("[DEBUG] app._index.jsx component rendered");
+  const { dbUrl } = useLoaderData();
   return (
     <Page>
       <TitleBar title="Checkout App Dista" />
@@ -38,6 +34,9 @@ export default function Index() {
                 </Text>
                 <Text alignment="center">
                   Configure settings for dispatch dates and estimated delivery dates in your checkout experience.
+                </Text>
+                <Text alignment="center" color="critical">
+                  DATABASE_URL: {dbUrl}
                 </Text>
                 <InlineStack align="center">
                   <Button url="/app/datesinput" variant="primary">
