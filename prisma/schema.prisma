@@ -10,11 +10,12 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "mongodb"
-  url      = "mongodb+srv://naga:naga0804@cluster0.esec6.mongodb.net/Testing?retryWrites=true&w=majority&appName=Cluster0"
+  url      = "mongodb+srv://shopify_app_dista_checkout:GytyttCUfSKG5np4@distacart.ftn7d.mongodb.net/shopify_app_dista_checkout?retryWrites=true&w=majority"
 }
 
 model Session {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  session_id    String    @id @default(auto()) @map("_id") @db.ObjectId
+  id            String    @unique
   shop          String   
   state         String
   isOnline      Boolean  @default(false)
@@ -31,7 +32,4 @@ model Session {
   locale        String?
   collaborator  Boolean? @default(false)
   emailVerified Boolean? @default(false)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 }

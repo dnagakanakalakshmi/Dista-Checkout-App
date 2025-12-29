@@ -1,7 +1,5 @@
 import { json } from "@remix-run/node";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "../db.server";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
