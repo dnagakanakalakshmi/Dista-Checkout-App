@@ -11,12 +11,20 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-
+  console.log("[DEBUG] app._index.jsx loader called");
+  console.log("[DEBUG] DATABASE_URL:", process.env.DATABASE_URL || "NOT SET");
+  try {
+    await authenticate.admin(request);
+    console.log("[DEBUG] Admin authenticated successfully");
+  } catch (err) {
+    console.error("[ERROR] Admin authentication failed:", err);
+    throw err;
+  }
   return null;
 };
 
 export default function Index() {
+  console.log("[DEBUG] app._index.jsx component rendered");
   return (
     <Page>
       <TitleBar title="Checkout App Dista" />
