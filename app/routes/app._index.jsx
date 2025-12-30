@@ -20,7 +20,6 @@ export const loader = async ({ request }) => {
   let attached = false;
   let error = null;
   try {
-    console.log("Checking delivery customizations for shop:", shop);
 
     const query = `{
       deliveryCustomizations(first: 10) {
@@ -29,17 +28,13 @@ export const loader = async ({ request }) => {
     }`;
     const resp = await admin.graphql(query);
     const data = await resp.json();
-    console.log("deliveryCustomizations query result:", JSON.stringify(data));
     const nodes = data?.data?.deliveryCustomizations?.nodes || [];
     // Since we can't check handle, just check if any enabled customization exists
     attached = nodes.some(n => n.enabled);
-    console.log("Is any delivery-customization attached?", attached);
 
     // If not attached, attach it
     if (!attached) {
-      console.log("Not attached, attempting to create delivery-customization with static handle...");
       await runDeliveryCustomizationCreate(shop, "delivery-customization");
-      console.log("Successfully created delivery-customization");
       attached = true;
     }
   } catch (e) {
@@ -60,7 +55,7 @@ export default function Index() {
             <Card>
               <BlockStack gap="300">
                 <Text as="h1" variant="headingLg" alignment="center">
-                  Welcome to Checkout App Distaaa
+                  Welcome to Checkout App Dista
                 </Text>
                 <Text alignment="center">
                   Configure settings for dispatch dates and estimated delivery dates in your checkout experience.

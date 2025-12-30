@@ -10,7 +10,7 @@ generator client {
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "mongodb"
-  url      = "mongodb+srv://shopify_app_dista_checkout:GytyttCUfSKG5np4@distacart.ftn7d.mongodb.net/shopify_app_dista_checkout?retryWrites=true&w=majority"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
