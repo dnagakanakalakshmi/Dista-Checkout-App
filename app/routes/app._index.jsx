@@ -8,12 +8,46 @@ import {
   Box,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import shopify from "../shopify.server";
+import { runDeliveryCustomizationCreate } from "../delivery-customization-util";
+
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { admin, session } = await shopify.authenticate.admin(request);
+  const { shop } = session;
 
-  return null;
+  // Check if delivery customization is already attached
+  let attached = false;
+  let error = null;
+  try {
+    console.log("Checking delivery customizations for shop:", shop);
+
+    const query = `{
+      deliveryCustomizations(first: 10) {
+        nodes { id enabled }
+      }
+    }`;
+    const resp = await admin.graphql(query);
+    const data = await resp.json();
+    console.log("deliveryCustomizations query result:", JSON.stringify(data));
+    const nodes = data?.data?.deliveryCustomizations?.nodes || [];
+    // Since we can't check handle, just check if any enabled customization exists
+    attached = nodes.some(n => n.enabled);
+    console.log("Is any delivery-customization attached?", attached);
+
+    // If not attached, attach it
+    if (!attached) {
+      console.log("Not attached, attempting to create delivery-customization with static handle...");
+      await runDeliveryCustomizationCreate(shop, "delivery-customization");
+      console.log("Successfully created delivery-customization");
+      attached = true;
+    }
+  } catch (e) {
+    console.error("Error in delivery customization loader:", e);
+    error = e.message || String(e);
+  }
+
+  return { attached, error };
 };
 
 export default function Index() {
