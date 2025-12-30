@@ -71,6 +71,8 @@ jobs:
           tags: 518569466516.dkr.ecr.us-east-1.amazonaws.com/shopify_app_dista_checkout:${{ steps.image-tag.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
