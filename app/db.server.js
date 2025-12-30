@@ -8,17 +8,16 @@ function getDatabaseUrl() {
   return process.env.DATABASE_URL;
 }
 
-export const prisma =
-  global.prisma ||
-  new PrismaClient({
+const prisma =
+  process.env.NODE_ENV === "production"
+    ? new PrismaClient({
     datasources: {
       db: {
         url: getDatabaseUrl(),
       },
     },
     log: ["error", "warn"],
-  });
+  })
+    : global.prismaGlobal ?? (global.prismaGlobal = new PrismaClient());
 
-if (process.env.NODE_ENV !== "production") {
-  global.prismaGlobal ?? (global.prismaGlobal = new PrismaClient());
-}
+export default prisma;
