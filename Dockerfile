@@ -16,7 +16,7 @@ RUN npm remove @shopify/cli
 
 COPY . .
 
-RUN npx prisma db push
+#RUN npx prisma db push
 RUN npx prisma generate
 RUN npm run build
 
