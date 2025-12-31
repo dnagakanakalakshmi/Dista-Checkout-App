@@ -148,6 +148,4 @@ function Extension() {
     }
   }
 
-  // Generic fallback
-  return <Text>Dispatch date varies</Text>;
 }
