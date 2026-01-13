@@ -3,20 +3,20 @@
 
 # The version of APIs your extension will receive. Learn more:
 # https://shopify.dev/docs/api/usage/versioning
-api_version = "2025-10"
+api_version = "2025-07"
 
 [[extensions]]
-name = "zip-fee-ui"
-handle = "zip-fee-ui"
+name = "zip-fees-checkout"
+handle = "zip-fees-checkout"
 type = "ui_extension"
-uid = "6ae08b64-5b38-a7ce-3ec8-685697de07d27544f768"
+uid = "92f68bcb-1b8d-5e00-f9f9-56264b6de9a0f1a89937"
 
 # Controls where in Shopify your extension will be injected,
 # and the file that contains your extension’s source code. Learn more:
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/extension-targets-overview
 
 [[extensions.targeting]]
-module = "./src/Checkout.jsx"
+module = "./src/Checkout-approach2.tsx"
 target = "purchase.checkout.block.render"
 
 [extensions.capabilities]
@@ -27,7 +27,7 @@ api_access = true
 # Gives your extension access to make external network calls, using the
 # JavaScript `fetch()` API. Learn more:
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#network-access
-# network_access = true
+network_access = true
 
 # Loads metafields on checkout resources, including the cart,
 # products, customers, and more. Learn more:
