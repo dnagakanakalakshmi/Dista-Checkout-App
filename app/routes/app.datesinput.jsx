@@ -1,23 +1,34 @@
 import { json, redirect } from '@remix-run/node';
 import { useLoaderData, useActionData, Form } from '@remix-run/react';
 import { authenticate } from '../shopify.server';
-import { Card, Page, FormLayout, TextField, Button, Banner, InlineStack } from '@shopify/polaris';
+import {
+  Card,
+  Page,
+  FormLayout,
+  TextField,
+  Button,
+  Banner,
+  InlineStack,
+  Checkbox,
+} from '@shopify/polaris';
 import { useState, useEffect } from 'react';
 
-// Loader: fetch current delivery_templates metafield from Admin GraphQL
+// Loader: fetch current delivery_templates and zip_fee_extension metafields from Admin GraphQL
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
 
   const resp = await admin.graphql(`
-    query getMetafield {
+    query getMetafields {
       shop {
-        metafield(namespace: "distacart", key: "delivery_templates") { value }
+        deliveryTemplates: metafield(namespace: "distacart", key: "delivery_templates") { value }
+        zipFeeExtension: metafield(namespace: "distacart", key: "zip_fee_extension") { value }
       }
     }
   `);
   const data = await resp.json();
-  const value = data?.data?.shop?.metafield?.value ?? '';
-  return json({ value });
+  const value = data?.data?.shop?.deliveryTemplates?.value ?? '';
+  const zipFeeValue = data?.data?.shop?.zipFeeExtension?.value ?? '';
+  return json({ value, zipFeeValue });
 }
 
 // Action: upsert the metafield via Admin GraphQL
@@ -26,6 +37,8 @@ export async function action({ request }) {
   const form = await request.formData();
   const templatesJson = form.get('templatesJson');
   const countriesText = form.get('countriesText');
+  const zipFeeEnabled = form.get('zipFeeEnabled') === 'true';
+  const zipFeeProductId = form.get('zipFeeProductId');
   try {
     const parsed = JSON.parse(templatesJson);
     if (!Array.isArray(parsed.templates)) return json({ error: 'templates must be an array' }, { status: 400 });
@@ -39,6 +52,12 @@ export async function action({ request }) {
       if (codes.length > 0) parsed.countries = codes;
     }
 
+    // Build Zip Fee Extension config (optional)
+    const zipFeeConfig = {
+      enabled: zipFeeEnabled,
+      productId: typeof zipFeeProductId === 'string' ? zipFeeProductId.trim() : '',
+    };
+
     // get shop id for ownerId when setting metafield
     const shopResp = await admin.graphql(`query { shop { id } }`);
     const shopData = await shopResp.json();
@@ -46,13 +65,22 @@ export async function action({ request }) {
 
     const mutation = `
       mutation {
-        metafieldsSet(metafields: [{
-          namespace: "distacart",
-          key: "delivery_templates",
-          type: "json",
-          value: ${JSON.stringify(JSON.stringify(parsed))},
-          ownerId: "${shopId}"
-        }]) {
+        metafieldsSet(metafields: [
+          {
+            namespace: "distacart",
+            key: "delivery_templates",
+            type: "json",
+            value: ${JSON.stringify(JSON.stringify(parsed))},
+            ownerId: "${shopId}"
+          },
+          {
+            namespace: "distacart",
+            key: "zip_fee_extension",
+            type: "json",
+            value: ${JSON.stringify(JSON.stringify(zipFeeConfig))},
+            ownerId: "${shopId}"
+          }
+        ]) {
           metafields { id }
           userErrors { field message }
         }
@@ -74,6 +102,8 @@ export default function DatesInput() {
   const initial = data?.value || JSON.stringify({ templates: ["{window} business days"], replacementFormat: "Estimated Delivery: {label}", countries: ["GB"] }, null, 2);
   const [jsonText, setJsonText] = useState(initial);
   const [countriesText, setCountriesText] = useState('GB');
+  const [zipFeeEnabled, setZipFeeEnabled] = useState(false);
+  const [zipFeeProductId, setZipFeeProductId] = useState('');
 
   useEffect(() => {
     setJsonText(initial);
@@ -84,6 +114,25 @@ export default function DatesInput() {
       }
     } catch (e) {
       // ignore parse errors
+    }
+
+    // Initialize Zip Fee Extension config from loader data (if present)
+    try {
+      const rawZip = data?.zipFeeValue;
+      if (rawZip) {
+        const parsedOuter = JSON.parse(rawZip);
+        const parsedZip = typeof parsedOuter === 'string' ? JSON.parse(parsedOuter) : parsedOuter;
+        if (parsedZip && typeof parsedZip === 'object') {
+          if (typeof parsedZip.enabled === 'boolean') {
+            setZipFeeEnabled(parsedZip.enabled);
+          }
+          if (typeof parsedZip.productId === 'string') {
+            setZipFeeProductId(parsedZip.productId);
+          }
+        }
+      }
+    } catch (e) {
+      // ignore zip fee parse errors
     }
   }, [initial]);
 
@@ -125,11 +174,42 @@ export default function DatesInput() {
               helpText="Comma-separated list. Example: GB, US, IN"
             />
 
+
+            <div>
+              <h2 style={{ margin: 0, marginBottom: 8 }}>Zip Fee Extension</h2>
+              <p style={{ marginTop: 4, color: '#6B7380' }}>
+                Configure the surcharge product used by the Zip Fee Checkout extension. Enable it if you are using this extension.
+              </p>
+
+              <Checkbox
+                label="Enable Zip Fee Extension configuration"
+                checked={zipFeeEnabled}
+                onChange={(newChecked) => setZipFeeEnabled(Boolean(newChecked))}
+              />
+
+              {/* Hidden field to submit the checkbox value with the Remix form */}
+              <input
+                type="hidden"
+                name="zipFeeEnabled"
+                value={zipFeeEnabled ? 'true' : 'false'}
+              />
+
+              <TextField
+                label="Surcharge Product ID"
+                name="zipFeeProductId"
+                value={zipFeeProductId}
+                onChange={(value) => setZipFeeProductId(value)}
+                helpText="Shopify Product ID that contains the surcharge variants. The extension will pick the closest matching variant price."
+                disabled={!zipFeeEnabled}
+              />
+            </div>
+
             <InlineStack distribution="trailing">
               <Button primary submit>
                 Save Templates
               </Button>
             </InlineStack>
+
           </FormLayout>
         </Form>
       </Card>

@@ -7,8 +7,6 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-const SURCHARGE_PRODUCT_ID = "9814960242928";
-
 // Handle preflight OPTIONS request
 export const loader = async ({ request }) => {
   if (request.method === "OPTIONS") {
@@ -54,15 +52,82 @@ export const action = async ({ request }) => {
       );
     }
 
-    // Fetch product variants from Shopify Admin API using GraphQL for market pricing
+    // Fetch Zip Fee Extension config metafield from Shopify Admin API (to get surcharge product)
     const shopDomain = shop;
     const accessToken = session.accessToken;
     const apiVersion = "2025-01";
 
-    // Build GraphQL query with contextual pricing
+    const metafieldQuery = `
+      query getZipFeeConfig {
+        shop {
+          metafield(namespace: "distacart", key: "zip_fee_extension") {
+            value
+          }
+        }
+      }
+    `;
+
+    const metafieldResp = await fetch(
+      `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: metafieldQuery }),
+      }
+    );  
+
+    if (!metafieldResp.ok) {
+      const errorText = await metafieldResp.text();
+      console.error("Shopify GraphQL metafield error:", errorText);
+      return json(
+        { ok: false, error: "Failed to fetch zip fee configuration" },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
+
+    const metafieldData = await metafieldResp.json();
+    
+    const rawZipValue =
+      metafieldData?.data?.shop?.metafield?.value ?? null;
+
+    if (!rawZipValue) {
+      return json(
+        { ok: false, error: "Zip fee configuration not found" },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
+
+    let zipConfig;
+    try {
+      const outer = JSON.parse(rawZipValue);
+      zipConfig = typeof outer === "string" ? JSON.parse(outer) : outer;
+    } catch (e) {
+      console.error("DEBUG: Failed to parse zip fee config metafield:", e);
+      console.error("DEBUG: Error details:", e.message, e.stack);
+      return json(
+        { ok: false, error: "Invalid zip fee configuration format" },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
+
+    const surchargeProductId = zipConfig?.productId;
+
+    if (!surchargeProductId) {
+      return json(
+        { ok: false, error: "Surcharge product ID not configured" },
+        { status: 400, headers: CORS_HEADERS }
+      );
+    }
+
+    // Build GraphQL query with contextual pricing for the configured surcharge product
+    const productGid = `gid://shopify/Product/${surchargeProductId}`;
+    
     const graphqlQuery = `
       query getProductVariants($country: CountryCode) {
-        product(id: "gid://shopify/Product/${SURCHARGE_PRODUCT_ID}") {
+        product(id: "${productGid}") {
           id
           title
           variants(first: 250) {
@@ -86,8 +151,6 @@ export const action = async ({ request }) => {
     const variables = {
       country: shippingAddress?.countryCode || null,
     };
-
-    console.log("Fetching variants with market context:", variables);
 
     const response = await fetch(
       `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`,
@@ -116,15 +179,14 @@ export const action = async ({ request }) => {
     const data = await response.json();
     
     if (data.errors) {
-      console.error("GraphQL errors:", data.errors);
+      console.error("DEBUG: GraphQL errors:", data.errors);
       return json(
         { ok: false, error: "GraphQL query failed" },
         { status: 500, headers: CORS_HEADERS }
       );
     }
-
+    
     const variants = data.data?.product?.variants?.edges || [];
-    console.log('Fetched These Variants Details:', variants);
 
     if (variants.length === 0) {
       return json(
@@ -142,29 +204,10 @@ export const action = async ({ request }) => {
       }))
       .sort((a, b) => a.price - b.price); // Sort once ascending
 
-    // Log all available variant prices for debugging
-    console.log("Variant Selection Debug:", {
-      targetPrice,
-      requestedCurrency: currencyCode,
-      requestedCountry: shippingAddress?.countryCode,
-      availableVariants: variantsWithPrice.map((v) => ({
-        id: v.id,
-        price: v.price,
-        currency: v.currencyCode,
-      })),
-    });
 
     // Find first variant >= targetPrice, or use highest if none found
     const selectedVariant = variantsWithPrice.find((v) => v.price >= targetPrice)
       || variantsWithPrice[variantsWithPrice.length - 1];
-
-    console.log("Selected Variant:", {
-      targetPrice,
-      selectedVariantId: selectedVariant.id,
-      selectedVariantPrice: selectedVariant.price,
-    });
-
-
 
     return json(
       {
