@@ -7,7 +7,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-const SURCHARGE_PRODUCT_ID = "9416647966949";
+const SURCHARGE_PRODUCT_ID = "9814960242928";
 
 // Handle preflight OPTIONS request
 export const loader = async ({ request }) => {
