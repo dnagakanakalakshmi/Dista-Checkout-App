@@ -123,14 +123,12 @@ function RemoteCartAttribute() {
         // Cache the result
         remoteCache.set(cacheKey, isRemote);
 
-        // Update attribute with actual result if it's different from optimistic false
-        if (isRemote) {
-          await applyAttributeChange({
-            type: 'updateAttribute',
-            key: 'isRemote',
-            value: 'true',
-          });
-        }
+        // Always update the attribute with the actual result
+        await applyAttributeChange({
+          type: 'updateAttribute',
+          key: 'isRemote',
+          value: isRemote.toString(),
+        });
       } catch (error) {
         console.error('Error checking remote area:', error);
         // Keep the optimistic false value on error

@@ -35,8 +35,8 @@ export function cartDeliveryOptionsTransformRun(input) {
       const title = (option.title || '').toString();
       const hasRemoteInTitle = title.toLowerCase().includes('remote');
 
-      // If isRemote is false, hide options with "Remote" in title
-      // If isRemote is true, hide options WITHOUT "Remote" in title
+      // If isRemote is true: hide options that DON'T have "remote"
+      // If isRemote is false: hide options that HAVE "remote"
       const shouldHide = isRemote ? !hasRemoteInTitle : hasRemoteInTitle;
 
       if (shouldHide) {
@@ -49,12 +49,8 @@ export function cartDeliveryOptionsTransformRun(input) {
     }
   }
 
-  // If isRemote is true and all options would be hidden, show all instead
-  if (isRemote && operations.length === totalOptions) {
-    return NO_CHANGES;
-  }
-
-  if (!isRemote && operations.length === totalOptions) {
+  // If all options would be hidden, show all instead (regardless of isRemote value)
+  if (operations.length === totalOptions) {
     return NO_CHANGES;
   }
 
