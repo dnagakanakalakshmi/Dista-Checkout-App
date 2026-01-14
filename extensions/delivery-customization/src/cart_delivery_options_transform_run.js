@@ -167,6 +167,8 @@ export function cartDeliveryOptionsTransformRun(input) {
     const perVariant = (allLines || []).map(line => {
       // prefer jsonValue when metafield is typed JSON, otherwise fall back to value
       const raw = line?.merchandise?.metafield?.jsonValue ?? line?.merchandise?.metafield?.value;
+      // const rapidValue = line?.merchandise?.rapid?.jsonValue;
+      // console.log('Rapid delivery metafield value:', rapidValue);
       const parsed = parseVariantReadyValue(raw);
       return { id: line.id, quantity: line.quantity || 1, parsed };
     });

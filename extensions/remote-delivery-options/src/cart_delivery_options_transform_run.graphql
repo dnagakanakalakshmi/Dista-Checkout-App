@@ -1,0 +1,14 @@
+query CartDeliveryOptionsTransformRunInput {
+  cart {
+    attribute(key: "isRemote") {
+      key
+      value
+    }
+    deliveryGroups {
+      deliveryOptions {
+        handle
+        title
+      }
+    }
+  }
+}

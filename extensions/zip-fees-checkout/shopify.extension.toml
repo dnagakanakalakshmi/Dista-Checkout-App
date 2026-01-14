@@ -16,7 +16,7 @@ uid = "92f68bcb-1b8d-5e00-f9f9-56264b6de9a0f1a89937"
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/extension-targets-overview
 
 [[extensions.targeting]]
-module = "./src/Checkout-approach2.tsx"
+module = "./src/RemoteCartAttribute.jsx"
 target = "purchase.checkout.block.render"
 
 [extensions.capabilities]

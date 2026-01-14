@@ -16,8 +16,9 @@ export const loader = async ({ request }) => {
   const { admin, session } = await shopify.authenticate.admin(request);
   const { shop } = session;
 
-  // Check if delivery customization is already attached
+  // Check if delivery customizations are already attached
   let attached = false;
+  let remoteAttached = false;
   let error = null;
   try {
 
@@ -32,17 +33,23 @@ export const loader = async ({ request }) => {
     // Since we can't check handle, just check if any enabled customization exists
     attached = nodes.some(n => n.enabled);
 
-    // If not attached, attach it
+    // If not attached, attach both functions
     if (!attached) {
-      await runDeliveryCustomizationCreate(shop, "delivery-customization");
+      await runDeliveryCustomizationCreate(shop, "delivery-customization", "Estimated Delivery Dates");
       attached = true;
+    }
+
+    // Attach remote-delivery-options function
+    if(!remoteAttached){
+      await runDeliveryCustomizationCreate(shop, "remote-delivery-options", "Remote Area Delivery Filter");
+      remoteAttached = true;
     }
   } catch (e) {
     console.error("Error in delivery customization loader:", e);
     error = e.message || String(e);
   }
 
-  return { attached, error };
+  return { attached, remoteAttached, error };
 };
 
 export default function Index() {
