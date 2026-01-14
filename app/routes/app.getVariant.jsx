@@ -55,7 +55,7 @@ export const action = async ({ request }) => {
     // Fetch Zip Fee Extension config metafield from Shopify Admin API (to get surcharge product)
     const shopDomain = shop;
     const accessToken = session.accessToken;
-    const apiVersion = "2026-01";
+    const apiVersion = "2025-01";
 
     const metafieldQuery = `
       query getZipFeeConfig {
@@ -122,11 +122,11 @@ export const action = async ({ request }) => {
       );
     }
 
-    // Build GraphQL query with contextual pricing for the configured surcharge product
+    // Build GraphQL query for the configured surcharge product using shop currency
     const productGid = `gid://shopify/Product/${surchargeProductId}`;
     
     const graphqlQuery = `
-      query getProductVariants($country: CountryCode) {
+      query getProductVariants {
         product(id: "${productGid}") {
           id
           title
@@ -135,22 +135,13 @@ export const action = async ({ request }) => {
               node {
                 id
                 title
-                contextualPricing(context: { country: $country }) {
-                  price {
-                    amount
-                    currencyCode
-                  }
-                }
+                price
               }
             }
           }
         }
       }
     `;
-
-    const variables = {
-      country: shippingAddress?.countryCode || null,
-    };
 
     const response = await fetch(
       `https://${shopDomain}/admin/api/${apiVersion}/graphql.json`,
@@ -162,7 +153,6 @@ export const action = async ({ request }) => {
         },
         body: JSON.stringify({
           query: graphqlQuery,
-          variables: variables,
         }),
       }
     );
@@ -199,8 +189,7 @@ export const action = async ({ request }) => {
     const variantsWithPrice = variants
       .map((edge) => ({
         id: edge.node.id,
-        price: parseFloat(edge.node.contextualPricing.price.amount),
-        currencyCode: edge.node.contextualPricing.price.currencyCode,
+        price: parseFloat(edge.node.price),
       }))
       .sort((a, b) => a.price - b.price); // Sort once ascending
 

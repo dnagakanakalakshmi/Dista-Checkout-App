@@ -77,10 +77,13 @@ function ZipFeeApproach2() {
     const currentGroup = deliveryGroups?.[0];
     if (!currentGroup) return false;
 
-    const selectedOption = currentGroup.selectedDeliveryOption;
     const allOptions = currentGroup.deliveryOptions || [];
 
-    if (!selectedOption || allOptions.length === 0) return false;
+    // If only one delivery option, use regular price by default
+    if (allOptions.length <= 1) return false;
+
+    const selectedOption = currentGroup.selectedDeliveryOption;
+    if (!selectedOption) return false;
 
     // Parse days for all options - use code first (contains clean business day info), then title, then handle
     const optionsWithDays = allOptions.map(opt => {
@@ -224,7 +227,6 @@ function ZipFeeApproach2() {
       });
 
       const priceData = await priceResponse.json();
-      console.log("Surcharge price response data:", priceData);
 
       // Check if remote area surcharge applies
       if (!priceData.isRemoteArea) {
@@ -241,9 +243,8 @@ function ZipFeeApproach2() {
         ? parseFloat(priceData.expressCharge || 0)
         : parseFloat(priceData.regularCharge || 0);
 
-
-      if (!targetPrice || targetPrice <= 0) {
-        // No valid surcharge, remove existing fee line if present
+      // If charge is 0, remove fee line if it exists (no surcharge needed)
+      if (targetPrice <= 0) {
         if (feeLine) {
           await applyChange({ type: "removeCartLine", id: feeLine.id, quantity: feeLine.quantity });
         }
