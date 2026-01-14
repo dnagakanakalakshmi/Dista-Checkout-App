@@ -24,25 +24,28 @@ export const loader = async ({ request }) => {
 
     const query = `{
       deliveryCustomizations(first: 10) {
-        nodes { id enabled }
+        nodes { id enabled function { handle } }
       }
     }`;
     const resp = await admin.graphql(query);
     const data = await resp.json();
     const nodes = data?.data?.deliveryCustomizations?.nodes || [];
-    // Since we can't check handle, just check if any enabled customization exists
-    attached = nodes.some(n => n.enabled);
+    
+    // Check for each specific function
+    const deliveryCustomizationNode = nodes.find(n => n.function?.handle === "delivery-customization");
+    const remoteDeliveryNode = nodes.find(n => n.function?.handle === "remote-delivery-options");
+    
+    attached = deliveryCustomizationNode?.enabled ?? false;
+    remoteAttached = remoteDeliveryNode?.enabled ?? false;
 
-    // If not attached, attach both functions
+    // If not attached, attach delivery-customization function
     if (!attached) {
       await runDeliveryCustomizationCreate(shop, "delivery-customization", "Estimated Delivery Dates");
-      attached = true;
     }
 
     // Attach remote-delivery-options function
     if(!remoteAttached){
       await runDeliveryCustomizationCreate(shop, "remote-delivery-options", "Remote Area Delivery Filter");
-      remoteAttached = true;
     }
   } catch (e) {
     console.error("Error in delivery customization loader:", e);
