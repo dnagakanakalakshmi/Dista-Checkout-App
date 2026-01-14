@@ -20,7 +20,9 @@ export function cartDeliveryOptionsTransformRun(input) {
 
   // No shop-level configuration here — Function inputs may omit large shop metafields.
 
-  const now = input?.shop?.localTime?.date ? new Date(input.shop.localTime.date) : new Date();
+  let now = input?.shop?.localTime?.date ? new Date(input.shop.localTime.date) : new Date();
+  // Start counting from tomorrow
+  now.setDate(now.getDate() + 1);
 
   // parse small admin-provided templates metafield (namespace: distacart, key: delivery_templates)
   const shopTemplatesRaw = input?.shop?.metafield?.jsonValue ?? input?.shop?.metafield?.value;
