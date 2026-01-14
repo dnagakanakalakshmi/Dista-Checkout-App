@@ -24,7 +24,7 @@ export async function runDeliveryCustomizationCreate(shop, functionHandle) {
       userErrors { message }
     }
   }`;
-  const url = `https://${SHOP_DOMAIN}/admin/api/2025-10/graphql.json`;
+  const url = `https://${SHOP_DOMAIN}/admin/api/2025-07/graphql.json`;
   const res = await fetch(url, {
     method: "POST",
     headers: {

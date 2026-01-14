@@ -55,7 +55,7 @@ export const action = async ({ request }) => {
     // Fetch Zip Fee Extension config metafield from Shopify Admin API (to get surcharge product)
     const shopDomain = shop;
     const accessToken = session.accessToken;
-    const apiVersion = "2025-01";
+    const apiVersion = "2025-07";
 
     const metafieldQuery = `
       query getZipFeeConfig {

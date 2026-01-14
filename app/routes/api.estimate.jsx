@@ -50,7 +50,7 @@ export const loader = async ({ request }) => {
 
     // Fetch shop GID via Admin GraphQL
     async function graphQLAdminFetch({ query, variables }) {
-      const url = `https://${SHOP_DOMAIN}/admin/api/2025-10/graphql.json`;
+      const url = `https://${SHOP_DOMAIN}/admin/api/2025-07/graphql.json`;
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": ADMIN_TOKEN }, body: JSON.stringify({ query, variables }) });
       if (!res.ok) throw new Error(`Admin GraphQL error ${res.status}`);
       const j = await res.json();
