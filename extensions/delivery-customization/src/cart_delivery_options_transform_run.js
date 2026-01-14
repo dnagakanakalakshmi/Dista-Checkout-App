@@ -71,9 +71,9 @@ export function cartDeliveryOptionsTransformRun(input) {
   function formatDateShort(date) {
     try {
       const d = new Date(date);
-      // format as '11 Nov' (day then short month) to match requested display
+      // format as 'Feb 11' (short month then day)
       const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return `${d.getDate()} ${months[d.getMonth()]}`;
+      return `${months[d.getMonth()]} ${d.getDate()}`;
     } catch (e) {
       return new Date(date).toISOString().slice(0,10);
     }
@@ -190,7 +190,7 @@ export function cartDeliveryOptionsTransformRun(input) {
     const numericReady = perVariant.map(p => ({ min: toNumberSafe(p.parsed?.min), max: toNumberSafe(p.parsed?.max) }));
     const positiveMins = numericReady.map(r => r.min).filter(n => n > 0);
     const positiveMaxs = numericReady.map(r => r.max).filter(n => n > 0);
-    const cartReadyMin = positiveMins.length > 0 ? Math.min(...positiveMins) : 0;
+    const cartReadyMin = positiveMins.length > 0 ? Math.max(...positiveMins) : 0;
     const cartReadyMax = positiveMaxs.length > 0 ? Math.max(...positiveMaxs) : 0;
 
     for (const opt of (group.deliveryOptions || [])) {
