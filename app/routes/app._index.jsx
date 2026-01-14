@@ -24,16 +24,16 @@ export const loader = async ({ request }) => {
 
     const query = `{
       deliveryCustomizations(first: 10) {
-        nodes { id enabled function { handle } }
+        nodes { id enabled title }
       }
     }`;
     const resp = await admin.graphql(query);
     const data = await resp.json();
     const nodes = data?.data?.deliveryCustomizations?.nodes || [];
     
-    // Check for each specific function
-    const deliveryCustomizationNode = nodes.find(n => n.function?.handle === "delivery-customization");
-    const remoteDeliveryNode = nodes.find(n => n.function?.handle === "remote-delivery-options");
+    // Check for each specific function by title
+    const deliveryCustomizationNode = nodes.find(n => n.title === "Estimated Delivery Dates");
+    const remoteDeliveryNode = nodes.find(n => n.title === "Remote Area Delivery Filter");
     
     attached = deliveryCustomizationNode?.enabled ?? false;
     remoteAttached = remoteDeliveryNode?.enabled ?? false;
