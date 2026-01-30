@@ -21,8 +21,16 @@ export function cartDeliveryOptionsTransformRun(input) {
   // No shop-level configuration here — Function inputs may omit large shop metafields.
 
   let now = input?.shop?.localTime?.date ? new Date(input.shop.localTime.date) : new Date();
-  // Start counting from tomorrow
-  now.setDate(now.getDate() + 1);
+  // Start counting from the next business day (skip Sat/Sun)
+  function nextBusinessDay(baseDate) {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) {
+      d.setDate(d.getDate() + 1);
+    }
+    return d;
+  }
+  now = nextBusinessDay(now);
 
   // parse small admin-provided templates metafield (namespace: distacart, key: delivery_templates)
   const shopTemplatesRaw = input?.shop?.metafield?.jsonValue ?? input?.shop?.metafield?.value;
