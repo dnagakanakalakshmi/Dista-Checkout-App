@@ -181,18 +181,17 @@ export function cartDeliveryOptionsTransformRun(input) {
       return { id: line.id, quantity: line.quantity || 1, parsed };
     });
 
-    // overall absolute date range if any
-    let overallMinStart = null; let overallMaxEnd = null;
+    // Find the product with the latest (maximum) end date, and use its start date for the window
+    let latestEnd = null;
+    let correspondingStart = null;
     for (const p of perVariant) {
       const dr = p.parsed;
-      if (!dr) continue;
-      if (dr.startISO) {
-        const s = new Date(dr.startISO);
-        if (!isNaN(s) && (!overallMinStart || s < overallMinStart)) overallMinStart = s;
-      }
-      if (dr.endISO) {
-        const e = new Date(dr.endISO);
-        if (!isNaN(e) && (!overallMaxEnd || e > overallMaxEnd)) overallMaxEnd = e;
+      if (!dr || !dr.endISO) continue;
+      const e = new Date(dr.endISO);
+      if (!isNaN(e) && (!latestEnd || e > latestEnd)) {
+        latestEnd = e;
+        // Use its start date if available, else fallback to end date
+        correspondingStart = dr.startISO ? new Date(dr.startISO) : e;
       }
     }
 
@@ -289,9 +288,10 @@ export function cartDeliveryOptionsTransformRun(input) {
       // compute display dates
       let displayStart = addBusinessDays(now, deliveryMinDays);
       let displayEnd = addBusinessDays(now, deliveryMaxDays);
-      if (overallMinStart && overallMaxEnd) {
-        displayStart = overallMinStart;
-        displayEnd = overallMaxEnd;
+      // If absolute dates are present, use the window from the product with the latest end date
+      if (latestEnd && correspondingStart) {
+        displayStart = correspondingStart;
+        displayEnd = latestEnd;
       }
 
       const displayLabel = `${formatDateShort(displayStart)} - ${formatDateShort(displayEnd)}`;
