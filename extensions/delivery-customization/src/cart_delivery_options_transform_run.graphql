@@ -32,5 +32,8 @@ query CartDeliveryOptionsTransformRunInput {
     metafield(namespace: "distacart", key: "delivery_templates") {
       value
     }
+    readyToShip: metafield(namespace: "distacart", key: "ready_to_ship_regular") {
+      value
+    }
   }
 }

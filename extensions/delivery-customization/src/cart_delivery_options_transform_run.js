@@ -196,12 +196,36 @@ export function cartDeliveryOptionsTransformRun(input) {
       }
     }
 
-    // compute cart-level ready mins/max. Ignore zero/undefined entries when at least one product reports a positive window.
-    const numericReady = perVariant.map(p => ({ min: toNumberSafe(p.parsed?.min), max: toNumberSafe(p.parsed?.max) }));
-    const positiveMins = numericReady.map(r => r.min).filter(n => n > 0);
-    const positiveMaxs = numericReady.map(r => r.max).filter(n => n > 0);
-    const cartReadyMin = positiveMins.length > 0 ? Math.max(...positiveMins) : 0;
-    const cartReadyMax = positiveMaxs.length > 0 ? Math.max(...positiveMaxs) : 0;
+    // Match minicart fallback logic: if no product metafield, use shop.metafields.distacart.ready_to_ship_regular
+    let highestMaxDays = 0;
+    let correspondingMinDays = 0;
+    for (const p of perVariant) {
+      const dr = p.parsed;
+      if (!dr) continue;
+      const min = toNumberSafe(dr.min);
+      const max = toNumberSafe(dr.max);
+      if (max > highestMaxDays) {
+        highestMaxDays = max;
+        correspondingMinDays = min;
+      }
+    }
+
+    // Fallback: use shop.metafields.distacart.ready_to_ship_regular if no product metafield present
+    let fallbackMin = 0, fallbackMax = 0;
+    const shopReadyRaw = input?.shop?.readyToShip?.value;
+    if (shopReadyRaw) {
+      try {
+        const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
+        if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
+          fallbackMin = Number(shopReadyObj.delivery_min_days);
+        }
+        if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
+          fallbackMax = Number(shopReadyObj.delivery_max_days);
+        }
+      } catch (e) {
+        console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
+      }
+    }
 
     for (const opt of (group.deliveryOptions || [])) {
   // The shipping window comes from the option title itself (e.g. "3-5 Business day Priority Shipping...")
@@ -283,8 +307,19 @@ export function cartDeliveryOptionsTransformRun(input) {
         methodMax = 5;
       }
 
-      const deliveryMinDays = cartReadyMin + methodMin;
-      const deliveryMaxDays = cartReadyMax + methodMax;
+      // Use product metafield if present and max > fallback, else fallback
+      let readyMin, readyMax;
+      if (highestMaxDays > fallbackMax) {
+        readyMin = correspondingMinDays;
+        readyMax = highestMaxDays;
+      } else {
+        readyMin = fallbackMin;
+        readyMax = fallbackMax;
+      }
+
+      // Add methodMin/methodMax to readyMin/readyMax to match minicart logic
+      let deliveryMinDays = readyMin + methodMin;
+      let deliveryMaxDays = readyMax + methodMax;
 
       // compute display dates
       let displayStart = addBusinessDays(now, deliveryMinDays);
