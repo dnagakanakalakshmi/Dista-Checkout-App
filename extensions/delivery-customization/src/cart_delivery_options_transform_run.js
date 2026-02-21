@@ -213,19 +213,23 @@ export function cartDeliveryOptionsTransformRun(input) {
     // Fallback: use shop.metafields.distacart.ready_to_ship_regular if no product metafield present
     let fallbackMin = 0, fallbackMax = 0;
     const shopReadyRaw = input?.shop?.readyToShip?.value;
-    if (shopReadyRaw) {
-      try {
-        const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
-        if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
-          fallbackMin = Number(shopReadyObj.delivery_min_days);
-        }
-        if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
-          fallbackMax = Number(shopReadyObj.delivery_max_days);
-        }
-      } catch (e) {
-        console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
-      }
-    }
+    fallbackMin = 5;
+    fallbackMax = 6;
+    // if (shopReadyRaw) {
+    //   try {
+    //     const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
+    //     if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
+    //       // fallbackMin = Number(shopReadyObj.delivery_min_days);
+    //       fallbackMin = 5;
+    //     }
+    //     if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
+    //       // fallbackMax = Number(shopReadyObj.delivery_max_days);
+    //       fallbackMax = 6;
+    //     }
+    //   } catch (e) {
+    //     console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
+    //   }
+    // }
 
     for (const opt of (group.deliveryOptions || [])) {
   // The shipping window comes from the option title itself (e.g. "3-5 Business day Priority Shipping...")
