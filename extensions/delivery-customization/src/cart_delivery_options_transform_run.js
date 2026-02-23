@@ -197,11 +197,19 @@ export function cartDeliveryOptionsTransformRun(input) {
     }
 
     // Match minicart fallback logic: if no product metafield, use shop.metafields.distacart.ready_to_ship_regular
+
+    // Determine if all products have product-level metafields
+    let allHaveProdMetafield = true;
+    let anyMissingProdMetafield = false;
     let highestMaxDays = 0;
     let correspondingMinDays = 0;
     for (const p of perVariant) {
       const dr = p.parsed;
-      if (!dr) continue;
+      if (!dr) {
+        allHaveProdMetafield = false;
+        anyMissingProdMetafield = true;
+        continue;
+      }
       const min = toNumberSafe(dr.min);
       const max = toNumberSafe(dr.max);
       if (max > highestMaxDays) {
@@ -210,26 +218,23 @@ export function cartDeliveryOptionsTransformRun(input) {
       }
     }
 
-    // Fallback: use shop.metafields.distacart.ready_to_ship_regular if no product metafield present
+    // Fallback: use shop.metafields.distacart.ready_to_ship_regular if any product is missing product-level metafield
     let fallbackMin = 0, fallbackMax = 0;
     const shopReadyRaw = input?.shop?.readyToShip?.value;
-    fallbackMin = 5;
-    fallbackMax = 6;
-    // if (shopReadyRaw) {
-    //   try {
-    //     const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
-    //     if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
-    //       // fallbackMin = Number(shopReadyObj.delivery_min_days);
-    //       fallbackMin = 5;
-    //     }
-    //     if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
-    //       // fallbackMax = Number(shopReadyObj.delivery_max_days);
-    //       fallbackMax = 6;
-    //     }
-    //   } catch (e) {
-    //     console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
-    //   }
-    // }
+    if (anyMissingProdMetafield && shopReadyRaw) {
+      try {
+        const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
+        if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
+          // fallbackMin = Number(shopReadyObj.delivery_min_days);
+          fallbackMin = 5;
+        }
+        if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
+          fallbackMax = 6;
+        }
+      } catch (e) {
+        console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
+      }
+    }
 
     for (const opt of (group.deliveryOptions || [])) {
   // The shipping window comes from the option title itself (e.g. "3-5 Business day Priority Shipping...")
@@ -311,14 +316,16 @@ export function cartDeliveryOptionsTransformRun(input) {
         methodMax = 5;
       }
 
-      // Use product metafield if present and max > fallback, else fallback
+
+      // If all products have product-level metafields, use only those.
+      // If any are missing, use the highest of product-level and shop-level fallback for min/max.
       let readyMin, readyMax;
-      if (highestMaxDays > fallbackMax) {
+      if (allHaveProdMetafield) {
         readyMin = correspondingMinDays;
         readyMax = highestMaxDays;
       } else {
-        readyMin = fallbackMin;
-        readyMax = fallbackMax;
+        readyMin = Math.max(correspondingMinDays, fallbackMin);
+        readyMax = Math.max(highestMaxDays, fallbackMax);
       }
 
       // Add methodMin/methodMax to readyMin/readyMax to match minicart logic
