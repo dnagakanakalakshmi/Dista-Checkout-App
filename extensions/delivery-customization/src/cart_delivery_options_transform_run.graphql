@@ -20,6 +20,9 @@ query CartDeliveryOptionsTransformRunInput {
             metafield(namespace: "distacart", key: "product_ready_to_ship") {
               jsonValue
             }
+            rapidDeliveryEligible: metafield(namespace: "distacart", key: "rapid_delivery") {
+              jsonValue
+            }
           }
         }
       }

@@ -41,6 +41,7 @@ export function cartDeliveryOptionsTransformRun(input) {
   const countries = Array.isArray(shopTemplates?.countries)
     ? shopTemplates.countries.map((c) => String(c).toUpperCase().trim()).filter(Boolean)
     : [];
+  const allowAllCountries = countries.includes('ALL');
 
   // safe pattern to match numeric windows inside admin templates (captures the window)
   const WINDOW_PATTERN = '(\\d{1,2}(?:\\s*(?:[-–—]|to)\\s*\\d{1,2})?|\\d{1,2}\\+)';
@@ -125,6 +126,23 @@ export function cartDeliveryOptionsTransformRun(input) {
     return null;
   }
 
+  function parseRapidDeliveryEligible(rawVal, countryCode) {
+    if (rawVal === null || rawVal === undefined || !countryCode) return false;
+    let parsed = rawVal;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch (e) { return false; }
+    }
+    if (typeof parsed === 'boolean') return parsed;
+    if (!parsed || typeof parsed !== 'object') return false;
+
+    const cc = countryCode.toUpperCase();
+    if (cc === 'US') {
+      // Support both full country name and code keys in metafield payloads.
+      return Boolean(parsed['United States'] ?? parsed.US ?? parsed.us);
+    }
+    return Boolean(parsed[cc] ?? parsed[cc.toLowerCase()]);
+  }
+
   // Parse shipping day ranges from free-form title/description text.
   // Examples it should handle:
   //  - "3-5 Business day Priority Shipping (Post Dispatch) > $14.99 (Fedex / DHL)"
@@ -169,16 +187,19 @@ export function cartDeliveryOptionsTransformRun(input) {
     // Dynamic gating: use countries list if provided, else fallback to GB-only
     const countryCode = (group?.deliveryAddress?.countryCode || '').toString().toUpperCase();
     const useDynamic = countries.length > 0;
-    const isAllowed = useDynamic ? countries.includes(countryCode) : countryCode === 'GB';
+    const isAllowed = useDynamic ? (allowAllCountries || countries.includes(countryCode)) : countryCode === 'GB';
     if (!isAllowed) continue;
     // compute per-line readiness and absolute date ranges using top-level cart.lines
     const perVariant = (allLines || []).map(line => {
       // prefer jsonValue when metafield is typed JSON, otherwise fall back to value
       const raw = line?.merchandise?.metafield?.jsonValue ?? line?.merchandise?.metafield?.value;
-      // const rapidValue = line?.merchandise?.rapid?.jsonValue;
-      // console.log('Rapid delivery metafield value:', rapidValue);
       const parsed = parseVariantReadyValue(raw);
-      return { id: line.id, quantity: line.quantity || 1, parsed };
+      const rapidRaw = line?.merchandise?.rapidDeliveryEligible?.jsonValue ?? line?.merchandise?.rapidDeliveryEligible?.value;
+      const isRapidEligible = parseRapidDeliveryEligible(rapidRaw, countryCode);
+      const parsedWithRapidOverride = (countryCode === 'US' && isRapidEligible)
+        ? { ...(parsed || {}), min: 1, max: 1 }
+        : parsed;
+      return { id: line.id, quantity: line.quantity || 1, parsed: parsedWithRapidOverride };
     });
 
     // overall absolute date range if any

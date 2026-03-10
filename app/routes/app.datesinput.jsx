@@ -2,8 +2,13 @@ import { json, redirect } from '@remix-run/node';
 import { useLoaderData, useActionData, Form } from '@remix-run/react';
 import { authenticate } from '../shopify.server';
 import {
+  isDeliveryCustomizationEnabledByTitle,
+  setDeliveryCustomizationEnabledByTitle,
+} from '../delivery-customization-util';
+import {
   Card,
   Page,
+  Tabs,
   FormLayout,
   TextField,
   Button,
@@ -15,7 +20,7 @@ import { useState, useEffect } from 'react';
 
 // Loader: fetch current delivery_templates and zip_fee_extension metafields from Admin GraphQL
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   const resp = await admin.graphql(`
     query getMetafields {
@@ -28,17 +33,23 @@ export async function loader({ request }) {
   const data = await resp.json();
   const value = data?.data?.shop?.deliveryTemplates?.value ?? '';
   const zipFeeValue = data?.data?.shop?.zipFeeExtension?.value ?? '';
-  return json({ value, zipFeeValue });
+  const prioritizeFastestShippingEnabled = await isDeliveryCustomizationEnabledByTitle(
+    session.shop,
+    'Prioritize Fastest Shipping',
+  );
+
+  return json({ value, zipFeeValue, prioritizeFastestShippingEnabled });
 }
 
 // Action: upsert the metafield via Admin GraphQL
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const templatesJson = form.get('templatesJson');
   const countriesText = form.get('countriesText');
   const zipFeeEnabled = form.get('zipFeeEnabled') === 'true';
   const zipFeeProductId = form.get('zipFeeProductId');
+  const prioritizeFastestShippingEnabled = form.get('prioritizeFastestShippingEnabled') === 'true';
   try {
     const parsed = JSON.parse(templatesJson);
     if (!Array.isArray(parsed.templates)) return json({ error: 'templates must be an array' }, { status: 400 });
@@ -90,20 +101,36 @@ export async function action({ request }) {
     const upsertResult = await upsertResp.json();
     const userErrors = upsertResult?.data?.metafieldsSet?.userErrors || [];
     if (userErrors.length) return json({ error: userErrors.map(e => e.message).join('; ') }, { status: 400 });
+
+    await setDeliveryCustomizationEnabledByTitle(session.shop, {
+      title: 'Prioritize Fastest Shipping',
+      functionHandle: 'prioritize-fastest-shipping',
+      enabled: prioritizeFastestShippingEnabled,
+    });
+
     return redirect('/app/datesinput');
   } catch (e) {
-    return json({ error: 'Invalid JSON' }, { status: 400 });
+    console.error('Dates input action error:', e);
+    return json({ error: e?.message || 'Invalid JSON' }, { status: 400 });
   }
 }
 
 export default function DatesInput() {
   const data = useLoaderData();
   const actionData = useActionData();
+  const [selectedTab, setSelectedTab] = useState(0);
   const initial = data?.value || JSON.stringify({ templates: ["{window} business days"], replacementFormat: "Estimated Delivery: {label}", countries: ["GB"] }, null, 2);
   const [jsonText, setJsonText] = useState(initial);
   const [countriesText, setCountriesText] = useState('GB');
   const [zipFeeEnabled, setZipFeeEnabled] = useState(false);
   const [zipFeeProductId, setZipFeeProductId] = useState('');
+  const [prioritizeFastestShippingEnabled, setPrioritizeFastestShippingEnabled] = useState(false);
+
+  const tabs = [
+    { id: 'delivery-templates-tab', content: 'Delivery Templates' },
+    { id: 'zip-fee-extension-tab', content: 'Zip Fee Extension' },
+    { id: 'prioritize-fastest-shipping-tab', content: 'Prioritize Fastest Shipping' },
+  ];
 
   useEffect(() => {
     setJsonText(initial);
@@ -134,48 +161,56 @@ export default function DatesInput() {
     } catch (e) {
       // ignore zip fee parse errors
     }
-  }, [initial]);
+
+    setPrioritizeFastestShippingEnabled(Boolean(data?.prioritizeFastestShippingEnabled));
+  }, [initial, data?.zipFeeValue, data?.prioritizeFastestShippingEnabled]);
 
   return (
     <Page fullWidth>
       <Card sectioned>
         <Form method="post">
-          <FormLayout>
-            <h2 style={{ margin: 0 }}>Delivery Templates</h2>
-            <div>
-              <p style={{ marginTop: 8 }}>
-                Provide a small JSON object with "templates" array containing templates with <code>{'{window}'}</code> placeholder.
-              </p>
-              <p style={{ marginTop: 4, color: '#6B7380' }}>
-                Example: {'{"templates":["{window} business days"]}'}
-              </p>
-              <p style={{ marginTop: 12 }}>
-                Countries to show: enter ISO country codes (e.g., GB, US, IN) separated by commas.
-              </p>
-            </div>
+          <div style={{ marginBottom: 5 }}>
+            <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab} />
+          </div>
 
+          <FormLayout>
             {actionData?.error && (
               <Banner status="critical">{actionData.error}</Banner>
             )}
 
-            <TextField
-              label="Templates JSON"
-              name="templatesJson"
-              multiline={8}
-              value={jsonText}
-              onChange={(value) => setJsonText(value)}
-            />
+            {selectedTab === 0 && (
+              <div>
+              <h2 style={{ margin: 0 }}>Delivery Templates</h2>
+              <div>
+                <p style={{ marginTop: 8 }}>
+                  Provide a small JSON object with "templates" array containing templates with <code>{'{window}'}</code> placeholder.
+                </p>
+                <p style={{ marginTop: 4, color: '#6B7380' }}>
+                  Example: {'{"templates":["{window} business days"]}'}
+                </p>
+                <p style={{ marginTop: 12 }}>
+                  Countries to show: enter ISO country codes (e.g., GB, US, IN) separated by commas.
+                </p>
+              </div>
 
-            <TextField
-              label="Countries to show (ISO codes)"
-              name="countriesText"
-              value={countriesText}
-              onChange={(value) => setCountriesText(value)}
-              helpText="Comma-separated list. Example: GB, US, IN"
-            />
+              <TextField
+                label="Templates JSON"
+                multiline={8}
+                value={jsonText}
+                onChange={(value) => setJsonText(value)}
+              />
 
+              <TextField
+                label="Countries to show (ISO codes)"
+                value={countriesText}
+                onChange={(value) => setCountriesText(value)}
+                helpText="Comma-separated list. Example: GB, US, IN"
+              />
+              </div>
+            )}
 
-            <div>
+            {selectedTab === 1 && (
+              <div>
               <h2 style={{ margin: 0, marginBottom: 8 }}>Zip Fee Extension</h2>
               <p style={{ marginTop: 4, color: '#6B7380' }}>
                 Configure the surcharge product used by the Zip Fee Checkout extension. Enable it if you are using this extension.
@@ -187,30 +222,45 @@ export default function DatesInput() {
                 onChange={(newChecked) => setZipFeeEnabled(Boolean(newChecked))}
               />
 
-              {/* Hidden field to submit the checkbox value with the Remix form */}
-              <input
-                type="hidden"
-                name="zipFeeEnabled"
-                value={zipFeeEnabled ? 'true' : 'false'}
-              />
-
               <TextField
                 label="Surcharge Product ID"
-                name="zipFeeProductId"
                 value={zipFeeProductId}
                 onChange={(value) => setZipFeeProductId(value)}
                 helpText="Shopify Product ID that contains the surcharge variants. The extension will pick the closest matching variant price."
                 disabled={!zipFeeEnabled}
               />
-            </div>
+              </div>
+            )}
+
+            {selectedTab === 2 && (
+              <div>
+              <h2 style={{ margin: 0, marginBottom: 8 }}>Prioritize Fastest Shipping</h2>
+              <p style={{ marginTop: 4, color: '#6B7380' }}>
+                Enable this to activate the delivery customization function that prioritizes the fastest shipping option at checkout.
+              </p>
+
+              <Checkbox
+                label="Enable Prioritize Fastest Shipping"
+                checked={prioritizeFastestShippingEnabled}
+                onChange={(newChecked) => setPrioritizeFastestShippingEnabled(Boolean(newChecked))}
+              />
+              </div>
+            )}
 
             <InlineStack distribution="trailing">
               <Button primary submit>
-                Save Templates
+                Save Settings
               </Button>
             </InlineStack>
 
           </FormLayout>
+
+          {/* Keep hidden fields outside FormLayout to avoid extra vertical spacing */}
+          <input type="hidden" name="templatesJson" value={jsonText} />
+          <input type="hidden" name="countriesText" value={countriesText} />
+          <input type="hidden" name="zipFeeEnabled" value={zipFeeEnabled ? 'true' : 'false'} />
+          <input type="hidden" name="zipFeeProductId" value={zipFeeProductId} />
+          <input type="hidden" name="prioritizeFastestShippingEnabled" value={prioritizeFastestShippingEnabled ? 'true' : 'false'} />
         </Form>
       </Card>
     </Page>
