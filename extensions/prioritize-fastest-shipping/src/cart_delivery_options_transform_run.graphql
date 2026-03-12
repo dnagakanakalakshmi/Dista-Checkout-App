@@ -1,6 +1,9 @@
 query CartDeliveryOptionsTransformRunInput {
   cart {
     deliveryGroups {
+      deliveryAddress {
+        countryCode
+      }
       deliveryOptions {
         handle
         title
@@ -8,6 +11,12 @@ query CartDeliveryOptionsTransformRunInput {
           amount
         }
       }
+    }
+  }
+  shop {
+    metafield(namespace: "distacart", key: "prioritize_fastest_shipping_countries") {
+      jsonValue
+      value
     }
   }
 }

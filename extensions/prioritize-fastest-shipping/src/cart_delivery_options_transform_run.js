@@ -10,10 +10,25 @@
  * @returns {CartDeliveryOptionsTransformRunResult}
  */
 export function cartDeliveryOptionsTransformRun(input) {
+  const configuredCountries = parseConfiguredCountries(
+    input?.shop?.metafield?.jsonValue,
+    input?.shop?.metafield?.value,
+  );
+  const allowAllCountries = configuredCountries.has('ALL');
+
   /** @type {CartDeliveryOptionsTransformRunResult["operations"]} */
   const operations = [];
 
   input.cart.deliveryGroups.forEach((group) => {
+    const destinationCountry = String(group.deliveryAddress?.countryCode || '').toUpperCase();
+
+    if (
+      !allowAllCountries &&
+      configuredCountries.size > 0 &&
+      !configuredCountries.has(destinationCountry)
+    ) {
+      return;
+    }
 
     const freeOptions = group.deliveryOptions.filter(
       (option) => Number(option.cost.amount) === 0
@@ -56,4 +71,44 @@ export function cartDeliveryOptionsTransformRun(input) {
   });
 
   return { operations };
+}
+
+/**
+ * @param {unknown} jsonValue
+ * @param {string | null | undefined} rawValue
+ */
+function parseConfiguredCountries(jsonValue, rawValue) {
+  const parsedValue = Array.isArray(jsonValue)
+    ? jsonValue
+    : parseRawConfiguredCountries(rawValue);
+
+  if (!Array.isArray(parsedValue)) {
+    return new Set();
+  }
+
+  return new Set(
+    parsedValue
+      .map((countryCode) => String(countryCode || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+}
+
+/**
+ * @param {string | null | undefined} rawValue
+ */
+function parseRawConfiguredCountries(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsedOuter = JSON.parse(rawValue);
+    return Array.isArray(parsedOuter)
+      ? parsedOuter
+      : Array.isArray(parsedOuter?.countries)
+        ? parsedOuter.countries
+        : [];
+  } catch (error) {
+    return [];
+  }
 }

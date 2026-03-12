@@ -18,6 +18,30 @@ import {
 } from '@shopify/polaris';
 import { useState, useEffect } from 'react';
 
+function normalizeCountryCodes(text) {
+  if (typeof text !== 'string') {
+    return [];
+  }
+
+  return text
+    .split(',')
+    .map((code) => String(code).trim().toUpperCase())
+    .filter((code) => code.length > 0);
+}
+
+function parseMetafieldJsonValue(rawValue, fallback) {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    const parsedOuter = JSON.parse(rawValue);
+    return typeof parsedOuter === 'string' ? JSON.parse(parsedOuter) : parsedOuter;
+  } catch (error) {
+    return fallback;
+  }
+}
+
 // Loader: fetch current delivery_templates and zip_fee_extension metafields from Admin GraphQL
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
@@ -27,18 +51,30 @@ export async function loader({ request }) {
       shop {
         deliveryTemplates: metafield(namespace: "distacart", key: "delivery_templates") { value }
         zipFeeExtension: metafield(namespace: "distacart", key: "zip_fee_extension") { value }
+        prioritizeFastestShippingCountries: metafield(namespace: "distacart", key: "prioritize_fastest_shipping_countries") { value }
       }
     }
   `);
   const data = await resp.json();
   const value = data?.data?.shop?.deliveryTemplates?.value ?? '';
   const zipFeeValue = data?.data?.shop?.zipFeeExtension?.value ?? '';
+  const prioritizeFastestShippingCountriesValue = data?.data?.shop?.prioritizeFastestShippingCountries?.value ?? '';
   const prioritizeFastestShippingEnabled = await isDeliveryCustomizationEnabledByTitle(
     session.shop,
     'Prioritize Fastest Shipping',
   );
 
-  return json({ value, zipFeeValue, prioritizeFastestShippingEnabled });
+  const prioritizeFastestShippingCountries = parseMetafieldJsonValue(
+    prioritizeFastestShippingCountriesValue,
+    [],
+  );
+
+  return json({
+    value,
+    zipFeeValue,
+    prioritizeFastestShippingEnabled,
+    prioritizeFastestShippingCountries,
+  });
 }
 
 // Action: upsert the metafield via Admin GraphQL
@@ -50,17 +86,17 @@ export async function action({ request }) {
   const zipFeeEnabled = form.get('zipFeeEnabled') === 'true';
   const zipFeeProductId = form.get('zipFeeProductId');
   const prioritizeFastestShippingEnabled = form.get('prioritizeFastestShippingEnabled') === 'true';
+  const prioritizeFastestShippingCountriesText = form.get('prioritizeFastestShippingCountriesText');
   try {
     const parsed = JSON.parse(templatesJson);
     if (!Array.isArray(parsed.templates)) return json({ error: 'templates must be an array' }, { status: 400 });
 
     // Parse countries from comma-separated ISO codes
     if (typeof countriesText === 'string') {
-      const codes = countriesText
-        .split(',')
-        .map((c) => String(c).trim().toUpperCase())
-        .filter((c) => c.length > 0);
-      if (codes.length > 0) parsed.countries = codes;
+      const codes = normalizeCountryCodes(countriesText);
+      if (codes.length > 0) {
+        parsed.countries = codes;
+      }
     }
 
     // Build Zip Fee Extension config (optional)
@@ -68,6 +104,10 @@ export async function action({ request }) {
       enabled: zipFeeEnabled,
       productId: typeof zipFeeProductId === 'string' ? zipFeeProductId.trim() : '',
     };
+
+    const prioritizeFastestShippingCountries = normalizeCountryCodes(
+      prioritizeFastestShippingCountriesText,
+    );
 
     // get shop id for ownerId when setting metafield
     const shopResp = await admin.graphql(`query { shop { id } }`);
@@ -89,6 +129,13 @@ export async function action({ request }) {
             key: "zip_fee_extension",
             type: "json",
             value: ${JSON.stringify(JSON.stringify(zipFeeConfig))},
+            ownerId: "${shopId}"
+          },
+          {
+            namespace: "distacart",
+            key: "prioritize_fastest_shipping_countries",
+            type: "json",
+            value: ${JSON.stringify(JSON.stringify(prioritizeFastestShippingCountries))},
             ownerId: "${shopId}"
           }
         ]) {
@@ -125,6 +172,7 @@ export default function DatesInput() {
   const [zipFeeEnabled, setZipFeeEnabled] = useState(false);
   const [zipFeeProductId, setZipFeeProductId] = useState('');
   const [prioritizeFastestShippingEnabled, setPrioritizeFastestShippingEnabled] = useState(false);
+  const [prioritizeFastestShippingCountriesText, setPrioritizeFastestShippingCountriesText] = useState('');
 
   const tabs = [
     { id: 'delivery-templates-tab', content: 'Delivery Templates' },
@@ -146,16 +194,13 @@ export default function DatesInput() {
     // Initialize Zip Fee Extension config from loader data (if present)
     try {
       const rawZip = data?.zipFeeValue;
-      if (rawZip) {
-        const parsedOuter = JSON.parse(rawZip);
-        const parsedZip = typeof parsedOuter === 'string' ? JSON.parse(parsedOuter) : parsedOuter;
-        if (parsedZip && typeof parsedZip === 'object') {
-          if (typeof parsedZip.enabled === 'boolean') {
-            setZipFeeEnabled(parsedZip.enabled);
-          }
-          if (typeof parsedZip.productId === 'string') {
-            setZipFeeProductId(parsedZip.productId);
-          }
+      const parsedZip = parseMetafieldJsonValue(rawZip, null);
+      if (parsedZip && typeof parsedZip === 'object') {
+        if (typeof parsedZip.enabled === 'boolean') {
+          setZipFeeEnabled(parsedZip.enabled);
+        }
+        if (typeof parsedZip.productId === 'string') {
+          setZipFeeProductId(parsedZip.productId);
         }
       }
     } catch (e) {
@@ -163,7 +208,17 @@ export default function DatesInput() {
     }
 
     setPrioritizeFastestShippingEnabled(Boolean(data?.prioritizeFastestShippingEnabled));
-  }, [initial, data?.zipFeeValue, data?.prioritizeFastestShippingEnabled]);
+    setPrioritizeFastestShippingCountriesText(
+      Array.isArray(data?.prioritizeFastestShippingCountries)
+        ? data.prioritizeFastestShippingCountries.map((code) => String(code).toUpperCase()).join(', ')
+        : '',
+    );
+  }, [
+    initial,
+    data?.zipFeeValue,
+    data?.prioritizeFastestShippingEnabled,
+    data?.prioritizeFastestShippingCountries,
+  ]);
 
   return (
     <Page fullWidth>
@@ -244,6 +299,13 @@ export default function DatesInput() {
                 checked={prioritizeFastestShippingEnabled}
                 onChange={(newChecked) => setPrioritizeFastestShippingEnabled(Boolean(newChecked))}
               />
+
+              <TextField
+                label="Countries to enable (ISO codes)"
+                value={prioritizeFastestShippingCountriesText}
+                onChange={(value) => setPrioritizeFastestShippingCountriesText(value)}
+                helpText="Enter country codes or ALL. Example: GB, US, IN for specific countries, or ALL for all countries. Leave blank to disable."
+              />
               </div>
             )}
 
@@ -261,6 +323,7 @@ export default function DatesInput() {
           <input type="hidden" name="zipFeeEnabled" value={zipFeeEnabled ? 'true' : 'false'} />
           <input type="hidden" name="zipFeeProductId" value={zipFeeProductId} />
           <input type="hidden" name="prioritizeFastestShippingEnabled" value={prioritizeFastestShippingEnabled ? 'true' : 'false'} />
+          <input type="hidden" name="prioritizeFastestShippingCountriesText" value={prioritizeFastestShippingCountriesText} />
         </Form>
       </Card>
     </Page>
