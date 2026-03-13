@@ -1,4 +1,4 @@
-import { json, redirect } from '@remix-run/node';
+import { json } from '@remix-run/node';
 import { useLoaderData, useActionData, Form } from '@remix-run/react';
 import { authenticate } from '../shopify.server';
 import {
@@ -155,7 +155,7 @@ export async function action({ request }) {
       enabled: prioritizeFastestShippingEnabled,
     });
 
-    return redirect('/app/datesinput');
+    return json({ success: true, savedAt: Date.now() });
   } catch (e) {
     console.error('Dates input action error:', e);
     return json({ error: e?.message || 'Invalid JSON' }, { status: 400 });
@@ -173,6 +173,7 @@ export default function DatesInput() {
   const [zipFeeProductId, setZipFeeProductId] = useState('');
   const [prioritizeFastestShippingEnabled, setPrioritizeFastestShippingEnabled] = useState(false);
   const [prioritizeFastestShippingCountriesText, setPrioritizeFastestShippingCountriesText] = useState('');
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
   const tabs = [
     { id: 'delivery-templates-tab', content: 'Delivery Templates' },
@@ -220,6 +221,16 @@ export default function DatesInput() {
     data?.prioritizeFastestShippingCountries,
   ]);
 
+  useEffect(() => {
+    if (actionData?.success) {
+      setShowSuccessBanner(true);
+      const timer = setTimeout(() => {
+        setShowSuccessBanner(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [actionData?.savedAt]);
+
   return (
     <Page fullWidth>
       <Card sectioned>
@@ -229,6 +240,9 @@ export default function DatesInput() {
           </div>
 
           <FormLayout>
+            {showSuccessBanner && (
+              <Banner status="success">Settings saved successfully!</Banner>
+            )}
             {actionData?.error && (
               <Banner status="critical">{actionData.error}</Banner>
             )}
@@ -304,7 +318,7 @@ export default function DatesInput() {
                 label="Countries to enable (ISO codes)"
                 value={prioritizeFastestShippingCountriesText}
                 onChange={(value) => setPrioritizeFastestShippingCountriesText(value)}
-                helpText="Enter country codes or ALL. Example: GB, US, IN for specific countries, or ALL for all countries. Leave blank to disable."
+                helpText="Enter country codes or ALL. Example: GB, US, IN for specific countries, or ALL for all countries."
               />
               </div>
             )}
