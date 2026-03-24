@@ -1,0 +1,29 @@
+query Input {
+  cart {
+    lines {
+      id
+      quantity
+      merchandise {
+        ... on ProductVariant {
+          quantityDiscounts: metafield(
+            namespace: "custom"
+            key: "bulk_discount"
+          ) {
+            value
+          }
+        }
+      }
+      cost{
+        compareAtAmountPerQuantity{
+          amount
+        }
+        amountPerQuantity{
+          amount
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+  }
+}

@@ -1,10 +1,16 @@
 import { json } from '@remix-run/node';
-import { useLoaderData, useActionData, Form } from '@remix-run/react';
+import { useLoaderData, useActionData, Form, useFetcher } from '@remix-run/react';
+import { useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
 import {
   isDeliveryCustomizationEnabledByTitle,
   setDeliveryCustomizationEnabledByTitle,
 } from '../delivery-customization-util';
+import {
+  disableDiscountFunction,
+  enableDiscountFunction,
+  getDiscountFunctionStatus,
+} from '../discount-function-server';
 import {
   Card,
   Page,
@@ -69,11 +75,14 @@ export async function loader({ request }) {
     [],
   );
 
+  const discountFunction = await getDiscountFunctionStatus(session.shop);
+
   return json({
     value,
     zipFeeValue,
     prioritizeFastestShippingEnabled,
     prioritizeFastestShippingCountries,
+    discountFunction,
   });
 }
 
@@ -81,12 +90,35 @@ export async function loader({ request }) {
 export async function action({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
+  const actionType = form.get('action');
   const templatesJson = form.get('templatesJson');
   const countriesText = form.get('countriesText');
   const zipFeeEnabled = form.get('zipFeeEnabled') === 'true';
   const zipFeeProductId = form.get('zipFeeProductId');
   const prioritizeFastestShippingEnabled = form.get('prioritizeFastestShippingEnabled') === 'true';
   const prioritizeFastestShippingCountriesText = form.get('prioritizeFastestShippingCountriesText');
+
+  if (actionType === 'set-discount-function') {
+    const enabled = form.get('enabled');
+
+    if (enabled !== 'true' && enabled !== 'false') {
+      return json({ ok: false, error: 'Invalid discount state.' }, { status: 400 });
+    }
+
+    try {
+      const discountFunction = enabled === 'true'
+        ? await enableDiscountFunction(session.shop)
+        : await disableDiscountFunction(session.shop);
+
+      return json({ ok: true, discountFunction });
+    } catch (error) {
+      return json({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to update discount function.',
+      });
+    }
+  }
+
   try {
     const parsed = JSON.parse(templatesJson);
     if (!Array.isArray(parsed.templates)) return json({ error: 'templates must be an array' }, { status: 400 });
@@ -165,6 +197,8 @@ export async function action({ request }) {
 export default function DatesInput() {
   const data = useLoaderData();
   const actionData = useActionData();
+  const discountFetcher = useFetcher();
+  const shopify = useAppBridge();
   const [selectedTab, setSelectedTab] = useState(0);
   const initial = data?.value || JSON.stringify({ templates: ["{window} business days"], replacementFormat: "Estimated Delivery: {label}", countries: ["GB"] }, null, 2);
   const [jsonText, setJsonText] = useState(initial);
@@ -175,10 +209,28 @@ export default function DatesInput() {
   const [prioritizeFastestShippingCountriesText, setPrioritizeFastestShippingCountriesText] = useState('');
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
+  const discountFromAction = discountFetcher.data?.discountFunction;
+  const isDiscountEnabled =
+    discountFromAction?.enabled ?? data?.discountFunction?.enabled ?? false;
+
+  const isDiscountLoading =
+    ['loading', 'submitting'].includes(discountFetcher.state) &&
+    discountFetcher.formMethod === 'POST';
+
+  const setDiscountFunctionEnabled = (enabled) =>
+    discountFetcher.submit(
+      {
+        action: 'set-discount-function',
+        enabled: String(Boolean(enabled)),
+      },
+      { method: 'POST' },
+    );
+
   const tabs = [
     { id: 'delivery-templates-tab', content: 'Delivery Templates' },
     { id: 'zip-fee-extension-tab', content: 'Zip Fee Extension' },
     { id: 'prioritize-fastest-shipping-tab', content: 'Prioritize Fastest Shipping' },
+    { id: 'line-item-discount-tab', content: 'Tiered Line Item Discount' },
   ];
 
   useEffect(() => {
@@ -230,6 +282,25 @@ export default function DatesInput() {
       return () => clearTimeout(timer);
     }
   }, [actionData?.savedAt]);
+
+  useEffect(() => {
+    if (!discountFetcher.data) {
+      return;
+    }
+
+    if (discountFetcher.data?.ok === false && discountFetcher.data?.error) {
+      shopify.toast.show(discountFetcher.data.error);
+      return;
+    }
+
+    if (discountFetcher.data?.discountFunction) {
+      shopify.toast.show(
+        discountFetcher.data.discountFunction.enabled
+          ? 'Discount function enabled'
+          : 'Discount function disabled',
+      );
+    }
+  }, [discountFetcher.data, shopify]);
 
   return (
     <Page fullWidth>
@@ -320,6 +391,28 @@ export default function DatesInput() {
                 onChange={(value) => setPrioritizeFastestShippingCountriesText(value)}
                 helpText="Enter country codes or ALL. Example: GB, US, IN for specific countries, or ALL for all countries."
               />
+              </div>
+            )}
+
+            {selectedTab === 3 && (
+              <div>
+                <h2 style={{ margin: 0, marginBottom: 8 }}>Line item discount function</h2>
+                <p style={{ marginTop: 4, color: '#6B7380' }}>
+                  Enable this to create and activate the app discount function.
+                </p>
+                <InlineStack gap="400" blockAlign="center">
+                  <Checkbox
+                    label="Enable discount function"
+                    checked={isDiscountEnabled}
+                    onChange={setDiscountFunctionEnabled}
+                    disabled={isDiscountLoading}
+                  />
+                </InlineStack>
+                {discountFetcher.data?.ok === false && discountFetcher.data?.error ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Banner status="critical">{discountFetcher.data.error}</Banner>
+                  </div>
+                ) : null}
               </div>
             )}
 
