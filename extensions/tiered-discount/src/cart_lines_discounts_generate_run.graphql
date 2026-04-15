@@ -1,15 +1,29 @@
 query Input {
+  localization {
+    country {
+      isoCode
+    }
+  }
   cart {
     lines {
       id
       quantity
+      # bargainPrice: attribute(key: "Bargain Price") {
+      #   value
+      # }
+      # originalPrice: attribute(key: "Original Price") {
+      #   value
+      # }
       merchandise {
         ... on ProductVariant {
-          quantityDiscounts: metafield(
-            namespace: "custom"
-            key: "bulk_discount"
-          ) {
-            value
+          id
+          product {
+            quantityDiscounts: metafield(
+              namespace: "distacart"
+              key: "volume_discount_config"
+            ) {
+              value
+            }
           }
         }
       }
