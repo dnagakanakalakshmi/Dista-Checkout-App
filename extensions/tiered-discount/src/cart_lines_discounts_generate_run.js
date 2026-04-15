@@ -197,12 +197,38 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     const applicableTier = getApplicableTier(tiers, line.quantity);
     const currentPerQty = Number(line.cost?.amountPerQuantity?.amount);
-
-    const rawAmountPerItem = getDiscountAmountPerItem(
-      currentPerQty,
-      applicableTier,
+    const compareAtPerQty = Number(
+      line.cost?.compareAtAmountPerQuantity?.amount,
     );
 
+    if (!Number.isFinite(currentPerQty) || currentPerQty <= 0) continue;
+
+    const basePerQty =
+      Number.isFinite(compareAtPerQty) && compareAtPerQty > 0
+        ? compareAtPerQty
+        : currentPerQty;
+
+    const rawBaseDiscountPercent =
+      ((basePerQty - currentPerQty) / basePerQty) * 100;
+    const roundedBaseDiscountPercent = Math.round(
+      Math.max(rawBaseDiscountPercent, 0),
+    );
+
+    const tierDiscountPercent =
+      applicableTier?.discountType === 'percentage'
+        ? applicableTier.discountValue
+        : 0;
+
+    const totalDiscountPercent = Math.min(
+      roundedBaseDiscountPercent + tierDiscountPercent,
+      100,
+    );
+
+    const targetPricePerItem = truncateMoney(
+      basePerQty * (1 - totalDiscountPercent / 100),
+    );
+
+    const rawAmountPerItem = roundMoney(currentPerQty - targetPricePerItem);
     const cappedAmountPerItem = Math.min(
       Math.max(rawAmountPerItem, 0),
       currentPerQty,
@@ -210,8 +236,8 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =
-        applicableTier?.discountType === 'percentage'
-          ? `EXTRA ${applicableTier.discountValue}% OFF`
+        tierDiscountPercent > 0
+          ? `EXTRA ${tierDiscountPercent}% OFF`
           : 'EXTRA DISCOUNT APPLIED';
 
       candidates.push({
@@ -234,7 +260,7 @@ export function cartLinesDiscountsGenerateRun(input) {
   }
 
   // for (const line of input.cart.lines) {
-  //       const bargainPriceValue = line.bargainPrice?.value;
+  //   const bargainPriceValue = line.bargainPrice?.value;
   //   const originalPriceValue = line.originalPrice?.value;
 
   //   const bargainPrice = Number(bargainPriceValue);
@@ -250,15 +276,17 @@ export function cartLinesDiscountsGenerateRun(input) {
   //       ((originalPrice - bargainPrice) / originalPrice) * 100;
 
   //     if (bargainDiscountPercent <= 10) {
-  //       const rawBargainAmount = roundMoney(originalPrice - bargainPrice);
   //       const currentPerQty = Number(line.cost?.amountPerQuantity?.amount);
-  //       const maxAllowedAmount =
+  //       const basePrice =
   //         Number.isFinite(currentPerQty) && currentPerQty > 0
   //           ? currentPerQty
   //           : originalPrice;
+  //       const rawBargainAmount = roundMoney(
+  //         (basePrice * bargainDiscountPercent) / 100,
+  //       );
   //       const bargainAmountPerItem = Math.min(
   //         Math.max(rawBargainAmount, 0),
-  //         maxAllowedAmount,
+  //         basePrice,
   //       );
 
   //       if (bargainAmountPerItem > 0) {

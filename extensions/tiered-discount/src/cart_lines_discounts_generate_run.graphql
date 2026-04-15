@@ -8,12 +8,12 @@ query Input {
     lines {
       id
       quantity
-      # bargainPrice: attribute(key: "Bargain Price") {
-      #   value
-      # }
-      # originalPrice: attribute(key: "Original Price") {
-      #   value
-      # }
+      bargainPrice: attribute(key: "Bargain Price") {
+        value
+      }
+      originalPrice: attribute(key: "Original Price") {
+        value
+      }
       merchandise {
         ... on ProductVariant {
           id
