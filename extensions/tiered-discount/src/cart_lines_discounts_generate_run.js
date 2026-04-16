@@ -235,10 +235,9 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     const rawBaseDiscountPercent =
       ((basePerQty - currentPerQty) / basePerQty) * 100;
-    // const roundedBaseDiscountPercent = Math.round(
-    //   Math.max(rawBaseDiscountPercent, 0),
-    // );
-    const roundedBaseDiscountPercent = Math.max(rawBaseDiscountPercent, 0);
+    const roundedBaseDiscountPercent = Math.round(
+      Math.max(rawBaseDiscountPercent, 0),
+    );
     // console.log('Raw Base Discount Percent:', rawBaseDiscountPercent);
     // console.log('Rounded Base Discount Percent:', roundedBaseDiscountPercent);
 
@@ -258,11 +257,10 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     // console.log('Total Discount Percent:', totalDiscountPercent);
 
-    // const targetPricePerItem = roundMoney(
-    //   basePerQty * (1 - totalDiscountPercent / 100),
-    // );
+    const targetPricePerItem = roundMoney(
+      basePerQty * (1 - totalDiscountPercent / 100),
+    );
 
-    const targetPricePerItem =  basePerQty * (1 - totalDiscountPercent / 100);
     // console.log('Target Price Per Item (unrounded):', targetPricePerItem);
 
     // console.log('Target Price Per Item:', targetPricePerItem);
@@ -274,8 +272,8 @@ export function cartLinesDiscountsGenerateRun(input) {
       currentPerQty,
     );
     
-    console.log('Raw Amount Per Item:', rawAmountPerItem);
-    console.log('cappedAmountPerItem:', cappedAmountPerItem);
+    // console.log('Raw Amount Per Item:', rawAmountPerItem);
+    // console.log('cappedAmountPerItem:', cappedAmountPerItem);
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =
