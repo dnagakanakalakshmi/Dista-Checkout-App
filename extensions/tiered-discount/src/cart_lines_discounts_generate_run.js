@@ -180,7 +180,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   for (const line of input.cart.lines) {
     // only apply discount if product id is 9033187688610
-    if (line.merchandise?.id !== '9972804157680') {
+    if (line.merchandise?.id !== '9033187688610') {
       continue;
     }
 
@@ -207,6 +207,10 @@ export function cartLinesDiscountsGenerateRun(input) {
       line.cost?.compareAtAmountPerQuantity?.amount,
     );
 
+    console.log('Line ID:', line.id);
+    console.log('Current Per Qty:', currentPerQty);
+    console.log('Compare At Per Qty:', compareAtPerQty);
+
     if (!Number.isFinite(currentPerQty) || currentPerQty <= 0) continue;
 
     const basePerQty =
@@ -214,31 +218,43 @@ export function cartLinesDiscountsGenerateRun(input) {
         ? compareAtPerQty
         : currentPerQty;
 
+    console.log('Base Per Qty:', basePerQty);
+
     const rawBaseDiscountPercent =
       ((basePerQty - currentPerQty) / basePerQty) * 100;
     const roundedBaseDiscountPercent = Math.round(
       Math.max(rawBaseDiscountPercent, 0),
     );
 
+    console.log('Base Discount Percent:', roundedBaseDiscountPercent);
+
     const tierDiscountPercent =
       applicableTier?.discountType === 'percentage'
         ? applicableTier.discountValue
         : 0;
+
+    console.log('Tier Discount Percent:', tierDiscountPercent);
 
     const totalDiscountPercent = Math.min(
       roundedBaseDiscountPercent + tierDiscountPercent,
       100,
     );
 
+    console.log('Total Discount Percent:', totalDiscountPercent);
+
     const targetPricePerItem = truncateMoney(
       basePerQty * (1 - totalDiscountPercent / 100),
     );
+
+    console.log('Target Price Per Item:', targetPricePerItem);
 
     const rawAmountPerItem = roundMoney(currentPerQty - targetPricePerItem);
     const cappedAmountPerItem = Math.min(
       Math.max(rawAmountPerItem, 0),
       currentPerQty,
     );
+
+    console.log('cappedAmountPerItem:', cappedAmountPerItem);
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =

@@ -52,6 +52,10 @@ export function cartDeliveryOptionsTransformRun(input) {
     const source = parts.join(WINDOW_PATTERN);
     try { return new RegExp(source, 'i'); } catch (e) { return null; }
   }
+  const compiledTemplates = templates
+    .filter((t) => typeof t === 'string' && t.includes('{window}') && t.length <= 500)
+    .map((t) => ({ template: t, re: buildTemplateRegex(t) }))
+    .filter((t) => Boolean(t.re));
 
   // small helpers
   function toNumberSafe(v) {
@@ -183,6 +187,39 @@ export function cartDeliveryOptionsTransformRun(input) {
   // We'll read the global lines and apply them to each group (best-effort mapping when lines aren't grouped).
   const groups = input?.cart?.deliveryGroups || [];
   const allLines = input?.cart?.lines || [];
+
+  // Parse static line-level metafields once and reuse across groups.
+  const baseLines = (allLines || []).map((line) => {
+    const raw = line?.merchandise?.metafield?.jsonValue ?? line?.merchandise?.metafield?.value;
+    const parsed = parseVariantReadyValue(raw);
+    const rapidRaw = line?.merchandise?.rapidDeliveryEligible?.jsonValue ?? line?.merchandise?.rapidDeliveryEligible?.value;
+    let rapidParsed = rapidRaw;
+    if (typeof rapidParsed === 'string') {
+      try { rapidParsed = JSON.parse(rapidParsed); } catch (e) { rapidParsed = null; }
+    }
+    return { id: line.id, quantity: line.quantity || 1, parsed, rapidParsed };
+  });
+
+  // Parse shop fallback metafield once.
+  let fallbackMin = 0;
+  let fallbackMax = 0;
+  const shopReadyRaw = input?.shop?.readyToShip?.value;
+  if (shopReadyRaw) {
+    try {
+      const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
+      if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
+        // Preserve existing behavior.
+        fallbackMin = 5;
+      }
+      if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
+        fallbackMax = 6;
+      }
+    } catch (e) {
+      fallbackMin = 0;
+      fallbackMax = 0;
+    }
+  }
+
   for (const group of groups) {
     // Dynamic gating: use countries list if provided, else fallback to GB-only
     const countryCode = (group?.deliveryAddress?.countryCode || '').toString().toUpperCase();
@@ -190,15 +227,11 @@ export function cartDeliveryOptionsTransformRun(input) {
     const isAllowed = useDynamic ? (allowAllCountries || countries.includes(countryCode)) : countryCode === 'GB';
     if (!isAllowed) continue;
     // compute per-line readiness and absolute date ranges using top-level cart.lines
-    const perVariant = (allLines || []).map(line => {
-      // prefer jsonValue when metafield is typed JSON, otherwise fall back to value
-      const raw = line?.merchandise?.metafield?.jsonValue ?? line?.merchandise?.metafield?.value;
-      const parsed = parseVariantReadyValue(raw);
-      const rapidRaw = line?.merchandise?.rapidDeliveryEligible?.jsonValue ?? line?.merchandise?.rapidDeliveryEligible?.value;
-      const isRapidEligible = parseRapidDeliveryEligible(rapidRaw, countryCode);
+    const perVariant = (baseLines || []).map((line) => {
+      const isRapidEligible = parseRapidDeliveryEligible(line.rapidParsed, countryCode);
       const parsedWithRapidOverride = (countryCode === 'US' && isRapidEligible)
-        ? { ...(parsed || {}), min: 1, max: 1 }
-        : parsed;
+        ? { ...(line.parsed || {}), min: 1, max: 1 }
+        : line.parsed;
       return { id: line.id, quantity: line.quantity || 1, parsed: parsedWithRapidOverride };
     });
 
@@ -240,23 +273,6 @@ export function cartDeliveryOptionsTransformRun(input) {
     }
 
     // Fallback: use shop.metafields.distacart.ready_to_ship_regular if any product is missing product-level metafield
-    let fallbackMin = 0, fallbackMax = 0;
-    const shopReadyRaw = input?.shop?.readyToShip?.value;
-    if (anyMissingProdMetafield && shopReadyRaw) {
-      try {
-        const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
-        if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
-          // fallbackMin = Number(shopReadyObj.delivery_min_days);
-          fallbackMin = 5;
-        }
-        if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
-          fallbackMax = 6;
-        }
-      } catch (e) {
-        console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
-      }
-    }
-
     for (const opt of (group.deliveryOptions || [])) {
   // The shipping window comes from the option title itself (e.g. "3-5 Business day Priority Shipping...")
   const title = (opt.title || '').toString();
@@ -266,12 +282,8 @@ export function cartDeliveryOptionsTransformRun(input) {
       // Try admin templates first (if provided). If a template matches, extract the numeric window from the capture.
       let parsedDays = null;
       let matchedTemplate = null;
-      for (const t of templates) {
-        if (typeof t !== 'string') continue;
-        if (!t.includes('{window}')) continue;
-        if (t.length > 500) continue;
-        const re = buildTemplateRegex(t);
-        if (!re) continue;
+      for (const t of compiledTemplates) {
+        const re = t.re;
         const m = combinedText.match(re);
         if (m) { matchedTemplate = { template: t, match: m }; break; }
       }
@@ -368,7 +380,7 @@ export function cartDeliveryOptionsTransformRun(input) {
       let newTitle;
       if (matchedTemplate && matchedTemplate.match) {
         const matchedSubstring = matchedTemplate.match[0];
-        const titleWithoutNumber = title.replace(new RegExp(matchedSubstring, 'i'), '').replace(/\s+/g, ' ').trim();
+        const titleWithoutNumber = title.replace(matchedSubstring, '').replace(/\s+/g, ' ').trim();
         const formattedReplacement = replacementFormat.replace('{label}', displayLabel);
         newTitle = titleWithoutNumber ? `${titleWithoutNumber} ${formattedReplacement}` : `${formattedReplacement} ${title}`;
       } else if (parsedDays && parsedDays.match) {
