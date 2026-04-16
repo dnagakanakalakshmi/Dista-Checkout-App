@@ -35,6 +35,16 @@ function parseLegacyVariantId(variantGid) {
   return tail || null;
 }
 
+const ALLOWED_VARIANT_IDS = new Set([
+  '46997282128034',
+  '46997282095266',
+  '46997282062498',
+]);
+
+// const ALLOWED_VARIANT_IDS = new Set([
+//   '46616465080549'
+// ]);
+
 function resolveTiersForScope(tiers, tiersByCountry, countryCode) {
   if (countryCode && hasOwn(tiersByCountry, countryCode)) {
     const countryTiers = tiersByCountry[countryCode];
@@ -179,10 +189,13 @@ export function cartLinesDiscountsGenerateRun(input) {
   const candidates = [];
 
   for (const line of input.cart.lines) {
-    // only apply discount if product id is 9033187688610
-    if (line.merchandise?.id !== '9033187688610') {
-      continue;
-    }
+    const variantId = line.merchandise?.id;
+    const legacyVariantId = parseLegacyVariantId(variantId);
+    const variantIsAllowed =
+      (legacyVariantId && ALLOWED_VARIANT_IDS.has(legacyVariantId)) ||
+      (variantId && ALLOWED_VARIANT_IDS.has(String(variantId)));
+
+    if (!variantIsAllowed) continue;
 
     const metafield = line.merchandise?.product?.quantityDiscounts;
 
@@ -196,7 +209,6 @@ export function cartLinesDiscountsGenerateRun(input) {
       continue; // skip invalid JSON
     }
 
-    const variantId = line.merchandise?.id;
     const tiers = getLineTiers(parsed, variantId, countryCode);
 
     if (!tiers.length) continue;
@@ -207,9 +219,9 @@ export function cartLinesDiscountsGenerateRun(input) {
       line.cost?.compareAtAmountPerQuantity?.amount,
     );
 
-    console.log('Line ID:', line.id);
-    console.log('Current Per Qty:', currentPerQty);
-    console.log('Compare At Per Qty:', compareAtPerQty);
+    // console.log('Line ID:', line.id);
+    // console.log('Current Per Qty:', currentPerQty);
+    // console.log('Compare At Per Qty:', compareAtPerQty);
 
     if (!Number.isFinite(currentPerQty) || currentPerQty <= 0) continue;
 
@@ -218,7 +230,7 @@ export function cartLinesDiscountsGenerateRun(input) {
         ? compareAtPerQty
         : currentPerQty;
 
-    console.log('Base Per Qty:', basePerQty);
+    // console.log('Base Per Qty:', basePerQty);
 
     const rawBaseDiscountPercent =
       ((basePerQty - currentPerQty) / basePerQty) * 100;
@@ -226,27 +238,27 @@ export function cartLinesDiscountsGenerateRun(input) {
       Math.max(rawBaseDiscountPercent, 0),
     );
 
-    console.log('Base Discount Percent:', roundedBaseDiscountPercent);
+    // console.log('Base Discount Percent:', roundedBaseDiscountPercent);
 
     const tierDiscountPercent =
       applicableTier?.discountType === 'percentage'
         ? applicableTier.discountValue
         : 0;
 
-    console.log('Tier Discount Percent:', tierDiscountPercent);
+    // console.log('Tier Discount Percent:', tierDiscountPercent);
 
     const totalDiscountPercent = Math.min(
       roundedBaseDiscountPercent + tierDiscountPercent,
       100,
     );
 
-    console.log('Total Discount Percent:', totalDiscountPercent);
+    // console.log('Total Discount Percent:', totalDiscountPercent);
 
     const targetPricePerItem = truncateMoney(
       basePerQty * (1 - totalDiscountPercent / 100),
     );
 
-    console.log('Target Price Per Item:', targetPricePerItem);
+    // console.log('Target Price Per Item:', targetPricePerItem);
 
     const rawAmountPerItem = roundMoney(currentPerQty - targetPricePerItem);
     const cappedAmountPerItem = Math.min(
@@ -254,7 +266,7 @@ export function cartLinesDiscountsGenerateRun(input) {
       currentPerQty,
     );
 
-    console.log('cappedAmountPerItem:', cappedAmountPerItem);
+    // console.log('cappedAmountPerItem:', cappedAmountPerItem);
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =
