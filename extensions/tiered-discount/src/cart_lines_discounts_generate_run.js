@@ -180,7 +180,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   for (const line of input.cart.lines) {
     // only apply discount if product id is 9033187688610
-    if (line.merchandise?.id !== '9033187688610') {
+    if (line.merchandise?.id !== '9972804157680') {
       continue;
     }
 
