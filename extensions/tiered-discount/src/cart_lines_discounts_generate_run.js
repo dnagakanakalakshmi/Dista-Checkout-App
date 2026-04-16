@@ -7,13 +7,13 @@ function roundMoney(value) {
   return Math.round(value * 100) / 100;
 }
 
-function truncateMoney(value) {
-  if (value >= 0) {
-    return Math.floor(value * 100) / 100;
-  }
+// function truncateMoney(value) {
+//   if (value >= 0) {
+//     return Math.floor(value * 100) / 100;
+//   }
 
-  return Math.ceil(value * 100) / 100;
-}
+//   return Math.ceil(value * 100) / 100;
+// }
 
 
 function hasOwn(obj, key) {
@@ -255,7 +255,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     // console.log('Total Discount Percent:', totalDiscountPercent);
 
-    const targetPricePerItem = truncateMoney(
+    const targetPricePerItem = roundMoney(
       basePerQty * (1 - totalDiscountPercent / 100),
     );
 
@@ -286,7 +286,7 @@ export function cartLinesDiscountsGenerateRun(input) {
         ],
         value: {
           fixedAmount: {
-            amount: truncateMoney(cappedAmountPerItem).toFixed(2),
+            amount: roundMoney(cappedAmountPerItem).toFixed(2),
             appliesToEachItem: true,
           },
         },
