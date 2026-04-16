@@ -5,6 +5,9 @@ name = "Dista Checkout App"
 application_url = "https://shopify-app-dista-checkout.dista.care/"
 embedded = true
 
+[build]
+automatically_update_urls_on_dev = true
+
 [webhooks]
 api_version = "2025-07"
 
@@ -28,6 +31,3 @@ redirect_urls = [
   "https://shopify-app-dista-checkout.dista.care/auth/callback",
   "https://shopify-app-dista-checkout.dista.care/auth/shopify/callback"
 ]
-
-[build]
-automatically_update_urls_on_dev = true
