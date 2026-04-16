@@ -15,6 +15,7 @@ function truncateMoney(value) {
   return Math.ceil(value * 100) / 100;
 }
 
+
 function hasOwn(obj, key) {
   return Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
 }
@@ -178,6 +179,11 @@ export function cartLinesDiscountsGenerateRun(input) {
   const candidates = [];
 
   for (const line of input.cart.lines) {
+    // only apply discount if product id is 9033187688610
+    if (line.merchandise?.id !== '9033187688610') {
+      continue;
+    }
+
     const metafield = line.merchandise?.product?.quantityDiscounts;
 
     if (!metafield?.value) continue;
