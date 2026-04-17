@@ -220,9 +220,8 @@ export function cartLinesDiscountsGenerateRun(input) {
       line.cost?.compareAtAmountPerQuantity?.amount,
     );
 
-    // console.log('Line ID:', line.id);
-    // console.log('Current Per Qty:', currentPerQty);
-    // console.log('Compare At Per Qty:', compareAtPerQty);
+    console.log('Current Per Qty:', currentPerQty);
+    console.log('Compare At Per Qty:', compareAtPerQty);
 
     if (!Number.isFinite(currentPerQty) || currentPerQty <= 0) continue;
 
@@ -231,39 +230,36 @@ export function cartLinesDiscountsGenerateRun(input) {
         ? compareAtPerQty
         : currentPerQty;
 
-    // console.log('Base Per Qty:', basePerQty);
+    console.log('Base Per Qty:', basePerQty);
 
     const rawBaseDiscountPercent =
       ((basePerQty - currentPerQty) / basePerQty) * 100;
     const roundedBaseDiscountPercent = Math.round(
       Math.max(rawBaseDiscountPercent, 0),
     );
-    // console.log('Raw Base Discount Percent:', rawBaseDiscountPercent);
-    // console.log('Rounded Base Discount Percent:', roundedBaseDiscountPercent);
 
-    // console.log('Base Discount Percent:', roundedBaseDiscountPercent);
+    console.log('Raw Base Discount Percent:', rawBaseDiscountPercent);
+    console.log('Base Discount Percent:', roundedBaseDiscountPercent);
 
     const tierDiscountPercent =
       applicableTier?.discountType === 'percentage'
         ? applicableTier.discountValue
         : 0;
-
-    // console.log('Tier Discount Percent:', tierDiscountPercent);
+    
+    console.log('Tier Discount Percent:', tierDiscountPercent);
 
     const totalDiscountPercent = Math.min(
       roundedBaseDiscountPercent + tierDiscountPercent,
       100,
     );
 
-    // console.log('Total Discount Percent:', totalDiscountPercent);
+    console.log('Total Discount Percent:', totalDiscountPercent);
 
     const targetPricePerItem = roundMoney(
       basePerQty * (1 - totalDiscountPercent / 100),
     );
 
-    // console.log('Target Price Per Item (unrounded):', targetPricePerItem);
-
-    // console.log('Target Price Per Item:', targetPricePerItem);
+    console.log('Target Price Per Item:', targetPricePerItem);
 
     // const rawAmountPerItem = roundMoney(currentPerQty - targetPricePerItem);
     const rawAmountPerItem = currentPerQty - targetPricePerItem;
@@ -271,9 +267,9 @@ export function cartLinesDiscountsGenerateRun(input) {
       Math.max(rawAmountPerItem, 0),
       currentPerQty,
     );
-    
-    // console.log('Raw Amount Per Item:', rawAmountPerItem);
-    // console.log('cappedAmountPerItem:', cappedAmountPerItem);
+
+    console.log('Raw Amount Per Item:', rawAmountPerItem);
+    console.log('Capped Amount Per Item:', cappedAmountPerItem);
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =
