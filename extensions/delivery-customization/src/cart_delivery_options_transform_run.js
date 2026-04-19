@@ -1,389 +1,436 @@
 // @ts-nocheck
 
-/*
-  This runtime intentionally avoids strict TS checking because the
-  generated types may not be present during local editing. Keep this
-  file permissive and use `shopify app function typegen` to generate
-  accurate types in `generated/api` when ready.
-*/
-
-/**
- * Generic placeholder for no-op result
- */
-const NO_CHANGES = {
-  operations: [],
-};
+const NO_CHANGES = { operations: [] };
 
 /** @param {any} input */
 /** @returns {any} */
 export function cartDeliveryOptionsTransformRun(input) {
+  const now = getNextBusinessDay(
+    input?.shop?.localTime?.date
+      ? new Date(input.shop.localTime.date)
+      : new Date()
+  );
 
-  // No shop-level configuration here — Function inputs may omit large shop metafields.
+  const shopConfig = parseJson(
+    input?.shop?.metafield?.jsonValue ??
+    input?.shop?.metafield?.value
+  ) || {};
 
-  let now = input?.shop?.localTime?.date ? new Date(input.shop.localTime.date) : new Date();
-  // Start counting from the next business day (skip Sat/Sun)
-  function nextBusinessDay(baseDate) {
-    const d = new Date(baseDate);
-    d.setDate(d.getDate() + 1);
-    while (d.getDay() === 0 || d.getDay() === 6) {
-      d.setDate(d.getDate() + 1);
-    }
-    return d;
-  }
-  now = nextBusinessDay(now);
-
-  // parse small admin-provided templates metafield (namespace: distacart, key: delivery_templates)
-  const shopTemplatesRaw = input?.shop?.metafield?.jsonValue ?? input?.shop?.metafield?.value;
-  let shopTemplates = null;
-  try { shopTemplates = typeof shopTemplatesRaw === 'string' ? JSON.parse(shopTemplatesRaw) : shopTemplatesRaw; } catch (e) { shopTemplates = null; }
-  const templates = Array.isArray(shopTemplates?.templates) ? shopTemplates.templates : [];
-  const replacementFormat = (shopTemplates && shopTemplates.replacementFormat) || 'Estimated Delivery: {label}';
-  const countries = Array.isArray(shopTemplates?.countries)
-    ? shopTemplates.countries.map((c) => String(c).toUpperCase().trim()).filter(Boolean)
+  const templates = Array.isArray(shopConfig.templates)
+    ? shopConfig.templates
     : [];
-  const allowAllCountries = countries.includes('ALL');
 
-  // safe pattern to match numeric windows inside admin templates (captures the window)
-  const WINDOW_PATTERN = '(\\d{1,2}(?:\\s*(?:[-–—]|to)\\s*\\d{1,2})?|\\d{1,2}\\+)';
-  function escapeRegexLiteral(s) { return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'); }
-  function buildTemplateRegex(template) {
-    if (!template || !template.includes('{window}')) return null;
-    const parts = template.split('{window}').map(escapeRegexLiteral);
-    const source = parts.join(WINDOW_PATTERN);
-    try { return new RegExp(source, 'i'); } catch (e) { return null; }
-  }
+  const replacementFormat =
+    shopConfig.replacementFormat ||
+    "Estimated Delivery: {label}";
 
-  // small helpers
-  function toNumberSafe(v) {
-    if (v === null || v === undefined) return 0;
-    if (typeof v === 'number') return v;
-    if (typeof v === 'string') {
-      const t = v.trim();
-      if (t === '' || t.toLowerCase() === 'none') return 0;
-      const n = Number(t.replace(/,/g, ''));
-      return Number.isNaN(n) ? 0 : n;
-    }
-    return 0;
-  }
+  const countries = Array.isArray(shopConfig.countries)
+    ? shopConfig.countries.map(c => String(c).toUpperCase().trim())
+    : [];
 
-  function addBusinessDays(start, days) {
-    const d = new Date(start);
-    let added = 0;
-    while (added < days) {
-      d.setDate(d.getDate() + 1);
-      const day = d.getDay();
-      if (day !== 0 && day !== 6) added++;
-    }
-    return d;
-  }
+  const allowAllCountries = countries.includes("ALL");
 
-  function formatDateShort(date) {
-    try {
-      const d = new Date(date);
-      // format as 'Feb 11' (short month then day)
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return `${months[d.getMonth()]} ${d.getDate()}`;
-    } catch (e) {
-      return new Date(date).toISOString().slice(0,10);
-    }
-  }
-
-  function parseVariantReadyValue(rawVal) {
-    if (rawVal === null || rawVal === undefined) return null;
-    let parsed = rawVal;
-    if (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch (e) { /* keep string */ }
-    }
-
-    // object shape with min/max keys or date keys
-    if (parsed && typeof parsed === 'object') {
-      const vr = {};
-      if (parsed.min !== undefined) vr.min = toNumberSafe(parsed.min);
-      if (parsed.max !== undefined) vr.max = toNumberSafe(parsed.max);
-      if (parsed.min_ready_to_ship_days !== undefined) vr.min = toNumberSafe(parsed.min_ready_to_ship_days);
-      if (parsed.max_ready_to_ship_days !== undefined) vr.max = toNumberSafe(parsed.max_ready_to_ship_days);
-      // absolute date extraction
-      const start = parsed.start || parsed.start_date || parsed.min_date || parsed.from || parsed.min_ready_to_ship_date;
-      const end = parsed.end || parsed.end_date || parsed.max_date || parsed.to || parsed.max_ready_to_ship_date;
-      if (start || end) {
-        const s = start ? new Date(start) : null;
-        const e = end ? new Date(end) : null;
-        return { min: vr.min ?? 0, max: vr.max ?? 0, startISO: s && !isNaN(s) ? s.toISOString() : null, endISO: e && !isNaN(e) ? e.toISOString() : null };
-      }
-      if (vr.min !== undefined || vr.max !== undefined) return { min: vr.min || 0, max: vr.max || 0 };
-    }
-
-    // primitive number or numeric string
-    if (typeof parsed === 'number') return { min: parsed, max: parsed };
-    if (typeof parsed === 'string' && parsed.trim() !== '') {
-      const n = Number(parsed);
-      if (!isNaN(n)) return { min: n, max: n };
-      // maybe a date string
-      const d = new Date(parsed);
-      if (!isNaN(d)) return { startISO: d.toISOString(), endISO: d.toISOString() };
-    }
-
-    return null;
-  }
-
-  function parseRapidDeliveryEligible(rawVal, countryCode) {
-    if (rawVal === null || rawVal === undefined || !countryCode) return false;
-    let parsed = rawVal;
-    if (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch (e) { return false; }
-    }
-    if (typeof parsed === 'boolean') return parsed;
-    if (!parsed || typeof parsed !== 'object') return false;
-
-    const cc = countryCode.toUpperCase();
-    if (cc === 'US') {
-      // Support both full country name and code keys in metafield payloads.
-      return Boolean(parsed['United States'] ?? parsed.US ?? parsed.us);
-    }
-    return Boolean(parsed[cc] ?? parsed[cc.toLowerCase()]);
-  }
-
-  // Parse shipping day ranges from free-form title/description text.
-  // Examples it should handle:
-  //  - "3-5 Business day Priority Shipping (Post Dispatch) > $14.99 (Fedex / DHL)"
-  //  - "1 to 3 business days"
-  //  - "2+ business days"
-  function parseShippingDaysFromText(text) {
-    if (!text || typeof text !== 'string') return null;
-    const t = text.replace(/[,]/g, ' ').toLowerCase();
-
-    // Range like '3-5 business day' or '3 to 5 business days'
-    const rangeMatch = t.match(/(\d{1,2})\s*(?:[-–—]|to)\s*(\d{1,2})\s*(?:business|working)?\s*day/);
-    if (rangeMatch) {
-      const min = Number(rangeMatch[1]);
-      const max = Number(rangeMatch[2]);
-      if (!isNaN(min) && !isNaN(max)) return { min, max, match: rangeMatch[0] };
-    }
-
-    // Plus style '2+ business day(s)'
-    const plusMatch = t.match(/(\d{1,2})\s*\+\s*(?:business|working)?\s*day/);
-    if (plusMatch) {
-      const min = Number(plusMatch[1]);
-      if (!isNaN(min)) return { min, max: min + 2, match: plusMatch[0] };
-    }
-
-    // Single number '3 business day' or '3 days'
-    const singleMatch = t.match(/(?:about\s*)?(\d{1,2})\s*(?:business|working)?\s*day/);
-    if (singleMatch) {
-      const n = Number(singleMatch[1]);
-      if (!isNaN(n)) return { min: n, max: n, match: singleMatch[0] };
-    }
-
-    return null;
-  }
-
-  const operations = [];
-
-  // The current GraphQL has `deliveryGroups` and top-level `cart.lines` (not nested per group).
-  // We'll read the global lines and apply them to each group (best-effort mapping when lines aren't grouped).
   const groups = input?.cart?.deliveryGroups || [];
   const allLines = input?.cart?.lines || [];
+  const operations = [];
+
   for (const group of groups) {
-    // Dynamic gating: use countries list if provided, else fallback to GB-only
-    const countryCode = (group?.deliveryAddress?.countryCode || '').toString().toUpperCase();
-    const useDynamic = countries.length > 0;
-    const isAllowed = useDynamic ? (allowAllCountries || countries.includes(countryCode)) : countryCode === 'GB';
+    const countryCode = String(
+      group?.deliveryAddress?.countryCode || ""
+    ).toUpperCase();
+
+    const isAllowed =
+      countries.length > 0
+        ? allowAllCountries || countries.includes(countryCode)
+        : countryCode === "GB";
+
     if (!isAllowed) continue;
-    // compute per-line readiness and absolute date ranges using top-level cart.lines
-    const perVariant = (allLines || []).map(line => {
-      // prefer jsonValue when metafield is typed JSON, otherwise fall back to value
-      const raw = line?.merchandise?.metafield?.jsonValue ?? line?.merchandise?.metafield?.value;
-      const parsed = parseVariantReadyValue(raw);
-      const rapidRaw = line?.merchandise?.rapidDeliveryEligible?.jsonValue ?? line?.merchandise?.rapidDeliveryEligible?.value;
-      const isRapidEligible = parseRapidDeliveryEligible(rapidRaw, countryCode);
-      const parsedWithRapidOverride = (countryCode === 'US' && isRapidEligible)
-        ? { ...(parsed || {}), min: 1, max: 1 }
-        : parsed;
-      return { id: line.id, quantity: line.quantity || 1, parsed: parsedWithRapidOverride };
-    });
 
-    // overall absolute date range if any
-    let overallMinStart = null; let overallMaxEnd = null;
-    for (const p of perVariant) {
-      const dr = p.parsed;
-      if (!dr) continue;
-      if (dr.startISO) {
-        const s = new Date(dr.startISO);
-        if (!isNaN(s) && (!overallMinStart || s < overallMinStart)) overallMinStart = s;
-      }
-      if (dr.endISO) {
-        const e = new Date(dr.endISO);
-        if (!isNaN(e) && (!overallMaxEnd || e > overallMaxEnd)) overallMaxEnd = e;
-      }
-    }
+    const lineData = getLineDeliveryData(
+      allLines,
+      countryCode
+    );
 
-    // Match minicart fallback logic: if no product metafield, use shop.metafields.distacart.ready_to_ship_regular
+    const {
+      readyMin,
+      readyMax,
+      overallMinStart,
+      overallMaxEnd
+    } = getReadyDays(input, lineData);
 
-    // Determine if all products have product-level metafields
-    let allHaveProdMetafield = true;
-    let anyMissingProdMetafield = false;
-    let highestMaxDays = 0;
-    let correspondingMinDays = 0;
-    for (const p of perVariant) {
-      const dr = p.parsed;
-      if (!dr) {
-        allHaveProdMetafield = false;
-        anyMissingProdMetafield = true;
-        continue;
-      }
-      const min = toNumberSafe(dr.min);
-      const max = toNumberSafe(dr.max);
-      if (max > highestMaxDays) {
-        highestMaxDays = max;
-        correspondingMinDays = min;
-      }
-    }
-
-    // Fallback: use shop.metafields.distacart.ready_to_ship_regular if any product is missing product-level metafield
-    let fallbackMin = 0, fallbackMax = 0;
-    const shopReadyRaw = input?.shop?.readyToShip?.value;
-    if (anyMissingProdMetafield && shopReadyRaw) {
-      try {
-        const shopReadyObj = typeof shopReadyRaw === 'string' ? JSON.parse(shopReadyRaw) : shopReadyRaw;
-        if (shopReadyObj && shopReadyObj.delivery_min_days !== undefined) {
-          // fallbackMin = Number(shopReadyObj.delivery_min_days);
-          fallbackMin = 5;
-        }
-        if (shopReadyObj && shopReadyObj.delivery_max_days !== undefined) {
-          fallbackMax = 6;
-        }
-      } catch (e) {
-        console.log('Error parsing shop-level ready_to_ship_regular metafield:', e);
-      }
-    }
-
-    for (const opt of (group.deliveryOptions || [])) {
-  // The shipping window comes from the option title itself (e.g. "3-5 Business day Priority Shipping...")
-  const title = (opt.title || '').toString();
-  const handle = (opt.handle || '').toString();
-  const combinedText = title;
-
-      // Try admin templates first (if provided). If a template matches, extract the numeric window from the capture.
-      let parsedDays = null;
-      let matchedTemplate = null;
-      for (const t of templates) {
-        if (typeof t !== 'string') continue;
-        if (!t.includes('{window}')) continue;
-        if (t.length > 500) continue;
-        const re = buildTemplateRegex(t);
-        if (!re) continue;
-        const m = combinedText.match(re);
-        if (m) { matchedTemplate = { template: t, match: m }; break; }
-      }
-      if (matchedTemplate) {
-        // capture group 1 contains the numeric window (e.g. '3-5', '2+', '3')
-        const cap = (matchedTemplate.match && matchedTemplate.match[1]) ? matchedTemplate.match[1].toString().trim() : null;
-        if (cap) {
-          // normalize and parse
-          const s = cap.replace(/\s+/g, ' ');
-          if (s.includes('+')) {
-            const n = Number(s.replace('+',''));
-            if (!isNaN(n)) parsedDays = { min: n, max: n + 2, match: matchedTemplate.match[0] };
-          } else {
-            const rangeMatch = s.match(/(\d{1,2})\s*(?:[-–—]|to)\s*(\d{1,2})/i);
-            if (rangeMatch) {
-              const min = Number(rangeMatch[1]);
-              const max = Number(rangeMatch[2]);
-              if (!isNaN(min) && !isNaN(max)) parsedDays = { min, max, match: matchedTemplate.match[0] };
-            } else {
-              const n = Number(s);
-              if (!isNaN(n)) parsedDays = { min: n, max: n, match: matchedTemplate.match[0] };
-            }
-          }
-        }
-      }
-
-      // fallback to the old heuristic if templates didn't yield a match
-      if (!parsedDays) parsedDays = parseShippingDaysFromText(combinedText);
-      let methodMin = 0;
-      let methodMax = 0;
-      let determined = false;
-      if (parsedDays) {
-        methodMin = toNumberSafe(parsedDays.min);
-        methodMax = toNumberSafe(parsedDays.max);
-        determined = true;
-      } else {
-        // fallback to simple keyword heuristics
-        const lower = combinedText.toLowerCase();
-        const keywordDefaults = {
-          overnight: [1, 1],
-          express: [1, 2],
-          priority: [2, 4],
-          standard: [3, 7],
-          economy: [5, 10],
+    for (const option of group.deliveryOptions || []) {
+      const title = String(option.title || "");
+      const parsedDays =
+        parseDaysFromTemplates(title, templates) ||
+        parseShippingDaysFromText(title) ||
+        getKeywordDefaultDays(title) || {
+          min: 3,
+          max: 5
         };
-        let found = false;
-        for (const k of Object.keys(keywordDefaults)) {
-          if (lower.includes(k)) {
-            methodMin = keywordDefaults[k][0];
-            methodMax = keywordDefaults[k][1];
-            found = true;
-            break;
-          }
-        }
 
-        // No country-config mapping available in this runtime (shop metafield omitted). Respect keyword heuristics only.
-        if (found) determined = true;
-      }
+      const deliveryMinDays =
+        readyMin + parsedDays.min;
 
-      // If nothing determined the method window, use default 3-5 business days
-      if (!determined) {
-        methodMin = 3;
-        methodMax = 5;
-      }
+      const deliveryMaxDays =
+        readyMax + parsedDays.max;
 
+      let displayStart = addBusinessDays(
+        now,
+        deliveryMinDays
+      );
 
-      // If all products have product-level metafields, use only those.
-      // If any are missing, use the highest of product-level and shop-level fallback for min/max.
-      let readyMin, readyMax;
-      if (allHaveProdMetafield) {
-        readyMin = correspondingMinDays;
-        readyMax = highestMaxDays;
-      } else {
-        readyMin = Math.max(correspondingMinDays, fallbackMin);
-        readyMax = Math.max(highestMaxDays, fallbackMax);
-      }
+      let displayEnd = addBusinessDays(
+        now,
+        deliveryMaxDays
+      );
 
-      // Add methodMin/methodMax to readyMin/readyMax to match minicart logic
-      let deliveryMinDays = readyMin + methodMin;
-      let deliveryMaxDays = readyMax + methodMax;
-
-      // compute display dates
-      let displayStart = addBusinessDays(now, deliveryMinDays);
-      let displayEnd = addBusinessDays(now, deliveryMaxDays);
       if (overallMinStart && overallMaxEnd) {
         displayStart = overallMinStart;
         displayEnd = overallMaxEnd;
       }
 
-      const displayLabel = `${formatDateShort(displayStart)} - ${formatDateShort(displayEnd)}`;
+      const displayLabel =
+        `${formatDateShort(displayStart)} - ${formatDateShort(displayEnd)}`;
 
-      // Build rename operation (use expected camelCase field names)
-      // If an admin template matched, prefer using the admin replacementFormat to compose the new title.
-      let newTitle;
-      if (matchedTemplate && matchedTemplate.match) {
-        const matchedSubstring = matchedTemplate.match[0];
-        const titleWithoutNumber = title.replace(new RegExp(matchedSubstring, 'i'), '').replace(/\s+/g, ' ').trim();
-        const formattedReplacement = replacementFormat.replace('{label}', displayLabel);
-        newTitle = titleWithoutNumber ? `${titleWithoutNumber} ${formattedReplacement}` : `${formattedReplacement} ${title}`;
-      } else if (parsedDays && parsedDays.match) {
-        // remove the matched numeric phrase from the original title (case-insensitive)
-        function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'); }
-        const re = new RegExp(escapeRegExp(parsedDays.match), 'i');
-        const titleWithoutNumber = title.replace(re, '').replace(/\s+/g, ' ').trim();
-        newTitle = `${titleWithoutNumber} ${replacementFormat.replace('{label}', displayLabel)} `;
-      } else {
-        newTitle = `${replacementFormat.replace('{label}', displayLabel)} ${title || handle}`;
-      }
-      operations.push({ deliveryOptionRename: { deliveryOptionHandle: opt.handle, title: newTitle } });
+      const newTitle = buildUpdatedTitle(
+        title,
+        parsedDays.match,
+        replacementFormat,
+        displayLabel
+      );
+
+      operations.push({
+        deliveryOptionRename: {
+          deliveryOptionHandle: option.handle,
+          title: newTitle
+        }
+      });
     }
   }
 
-  if (!operations.length) return NO_CHANGES;
-  return { operations };
-};
+  return operations.length
+    ? { operations }
+    : NO_CHANGES;
+}
+
+/* ---------------- HELPERS ---------------- */
+
+function parseJson(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function getNextBusinessDay(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + 1);
+
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+
+  return d;
+}
+
+function addBusinessDays(start, days) {
+  const d = new Date(start);
+  let added = 0;
+
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const day = d.getDay();
+
+    if (day !== 0 && day !== 6) {
+      added++;
+    }
+  }
+
+  return d;
+}
+
+function formatDateShort(date) {
+  const d = new Date(date);
+  const months = [
+    "Jan","Feb","Mar","Apr","May","Jun",
+    "Jul","Aug","Sep","Oct","Nov","Dec"
+  ];
+
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
+function toNumberSafe(v) {
+  if (v == null) return 0;
+
+  const n = Number(String(v).replace(/,/g, ""));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function parseVariantReadyValue(rawVal) {
+  const parsed = parseJson(rawVal) ?? rawVal;
+
+  if (typeof parsed === "number") {
+    return { min: parsed, max: parsed };
+  }
+
+  if (typeof parsed === "string") {
+    const n = Number(parsed);
+
+    if (!isNaN(n)) {
+      return { min: n, max: n };
+    }
+
+    const d = new Date(parsed);
+
+    if (!isNaN(d)) {
+      return {
+        startISO: d.toISOString(),
+        endISO: d.toISOString()
+      };
+    }
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const startRaw =
+      parsed.start ??
+      parsed.start_date ??
+      parsed.min_date ??
+      parsed.from ??
+      parsed.min_ready_to_ship_date ??
+      null;
+
+    const endRaw =
+      parsed.end ??
+      parsed.end_date ??
+      parsed.max_date ??
+      parsed.to ??
+      parsed.max_ready_to_ship_date ??
+      null;
+
+    const s = startRaw ? new Date(startRaw) : null;
+    const e = endRaw ? new Date(endRaw) : null;
+
+    return {
+      min: toNumberSafe(parsed.min ?? parsed.min_ready_to_ship_days),
+      max: toNumberSafe(parsed.max ?? parsed.max_ready_to_ship_days),
+      startISO: s && !isNaN(s) ? s.toISOString() : null,
+      endISO: e && !isNaN(e) ? e.toISOString() : null
+    };
+  }
+
+  return null;
+}
+
+function parseRapidDeliveryEligible(rawVal, countryCode) {
+  const parsed = parseJson(rawVal);
+
+  if (!parsed || !countryCode) return false;
+
+  if (countryCode === "US") {
+    return Boolean(
+      parsed["United States"] ??
+      parsed.US ??
+      parsed.us
+    );
+  }
+
+  return Boolean(
+    parsed[countryCode] ??
+    parsed[countryCode.toLowerCase()]
+  );
+}
+
+function getLineDeliveryData(lines, countryCode) {
+  return lines.map(line => {
+    const parsed = parseVariantReadyValue(
+      line?.merchandise?.metafield?.jsonValue ??
+      line?.merchandise?.metafield?.value
+    );
+
+    const rapidEligible =
+      parseRapidDeliveryEligible(
+        line?.merchandise?.rapidDeliveryEligible?.jsonValue ??
+        line?.merchandise?.rapidDeliveryEligible?.value,
+        countryCode
+      );
+
+    return {
+      parsed:
+        countryCode === "US" && rapidEligible
+          ? { ...(parsed || {}), min: 1, max: 1 }
+          : parsed
+    };
+  });
+}
+
+function getReadyDays(input, lineData) {
+  let anyMissing = false;
+  let highestMax = 0;
+  let correspondingMin = 0;
+  let overallMinStart = null;
+  let overallMaxEnd = null;
+
+  for (const line of lineData) {
+    const d = line.parsed;
+
+    if (!d) {
+      anyMissing = true;
+      continue;
+    }
+
+    if (d.max > highestMax) {
+      highestMax = d.max;
+      correspondingMin = d.min;
+    }
+
+    if (d.startISO) {
+      const s = new Date(d.startISO);
+      if (!overallMinStart || s < overallMinStart) {
+        overallMinStart = s;
+      }
+    }
+
+    if (d.endISO) {
+      const e = new Date(d.endISO);
+      if (!overallMaxEnd || e > overallMaxEnd) {
+        overallMaxEnd = e;
+      }
+    }
+  }
+
+  let fallbackMin = 0;
+  let fallbackMax = 0;
+
+  if (anyMissing) {
+    fallbackMin = 5;
+    fallbackMax = 6;
+  }
+
+  return {
+    readyMin: Math.max(
+      correspondingMin,
+      fallbackMin
+    ),
+    readyMax: Math.max(
+      highestMax,
+      fallbackMax
+    ),
+    overallMinStart,
+    overallMaxEnd
+  };
+}
+
+function parseShippingDaysFromText(text) {
+  if (!text) return null;
+
+  const t = text.toLowerCase();
+
+  const range =
+    t.match(/(\d+)\s*(?:-|to)\s*(\d+)/);
+
+  if (range) {
+    return {
+      min: Number(range[1]),
+      max: Number(range[2]),
+      match: range[0]
+    };
+  }
+
+  const plus = t.match(/(\d+)\+/);
+
+  if (plus) {
+    const min = Number(plus[1]);
+
+    return {
+      min,
+      max: min + 2,
+      match: plus[0]
+    };
+  }
+
+  const single = t.match(/(\d+)\s*day/);
+
+  if (single) {
+    const n = Number(single[1]);
+
+    return {
+      min: n,
+      max: n,
+      match: single[0]
+    };
+  }
+
+  return null;
+}
+
+function parseDaysFromTemplates(title, templates) {
+  for (const template of templates) {
+    const regex = buildTemplateRegex(template);
+
+    if (!regex) continue;
+
+    const match = title.match(regex);
+
+    if (!match) continue;
+
+    return parseShippingDaysFromText(match[1]);
+  }
+
+  return null;
+}
+
+function buildTemplateRegex(template) {
+  if (!template?.includes("{window}")) {
+    return null;
+  }
+
+  const source = template.replace(
+    "{window}",
+    "(\\d+(?:\\s*(?:-|–|—|to)\\s*\\d+|\\+)?)"
+  );
+
+  return new RegExp(source, "i");
+}
+
+function getKeywordDefaultDays(title) {
+  const t = title.toLowerCase();
+
+  const map = {
+    overnight: { min: 1, max: 1 },
+    express: { min: 1, max: 2 },
+    priority: { min: 2, max: 4 },
+    standard: { min: 3, max: 7 },
+    economy: { min: 5, max: 10 }
+  };
+
+  for (const key in map) {
+    if (t.includes(key)) {
+      return map[key];
+    }
+  }
+
+  return null;
+}
+
+function buildUpdatedTitle(
+  title,
+  matchedText,
+  format,
+  label
+) {
+  const replacement =
+    format.replace("{label}", label);
+
+  if (!matchedText) {
+    return `${replacement} ${title}`;
+  }
+
+  return title
+    .replace(new RegExp(matchedText, "i"), "")
+    .replace(/\s+/g, " ")
+    .trim() +
+    ` ${replacement}`;
+}
