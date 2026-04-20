@@ -35,12 +35,14 @@ function parseLegacyVariantId(variantGid) {
   return tail || null;
 }
 
-const ALLOWED_VARIANT_IDS = new Set([
-  '46997282128034',
-  '46997282095266',
-  '46997282062498',
-  '47043160506530'
-]);
+const ALLOWED_VARIANT_IDS = new Set([]);
+
+// const ALLOWED_VARIANT_IDS = new Set([
+//   '46997282128034',
+//   '46997282095266',
+//   '46997282062498',
+//   '47043160506530'
+// ]);
 
 // const ALLOWED_VARIANT_IDS = new Set([
 //   '46616465080549'
@@ -191,12 +193,12 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   for (const line of input.cart.lines) {
     const variantId = line.merchandise?.id;
-    const legacyVariantId = parseLegacyVariantId(variantId);
-    const variantIsAllowed =
-      (legacyVariantId && ALLOWED_VARIANT_IDS.has(legacyVariantId)) ||
-      (variantId && ALLOWED_VARIANT_IDS.has(String(variantId)));
+    // const legacyVariantId = parseLegacyVariantId(variantId);
+    // const variantIsAllowed =
+    //   (legacyVariantId && ALLOWED_VARIANT_IDS.has(legacyVariantId)) ||
+    //   (variantId && ALLOWED_VARIANT_IDS.has(String(variantId)));
 
-    if (!variantIsAllowed) continue;
+    // if (!variantIsAllowed) continue;
 
     const metafield = line.merchandise?.product?.quantityDiscounts;
 
@@ -220,9 +222,6 @@ export function cartLinesDiscountsGenerateRun(input) {
       line.cost?.compareAtAmountPerQuantity?.amount,
     );
 
-    console.log('Current Per Qty:', currentPerQty);
-    console.log('Compare At Per Qty:', compareAtPerQty);
-
     if (!Number.isFinite(currentPerQty) || currentPerQty <= 0) continue;
 
     const basePerQty =
@@ -230,36 +229,25 @@ export function cartLinesDiscountsGenerateRun(input) {
         ? compareAtPerQty
         : currentPerQty;
 
-    console.log('Base Per Qty:', basePerQty);
-
     const rawBaseDiscountPercent =
       ((basePerQty - currentPerQty) / basePerQty) * 100;
     const roundedBaseDiscountPercent = Math.round(
       Math.max(rawBaseDiscountPercent, 0),
     );
 
-    console.log('Raw Base Discount Percent:', rawBaseDiscountPercent);
-    console.log('Base Discount Percent:', roundedBaseDiscountPercent);
-
     const tierDiscountPercent =
       applicableTier?.discountType === 'percentage'
         ? applicableTier.discountValue
         : 0;
-    
-    console.log('Tier Discount Percent:', tierDiscountPercent);
 
     const totalDiscountPercent = Math.min(
       roundedBaseDiscountPercent + tierDiscountPercent,
       100,
     );
 
-    console.log('Total Discount Percent:', totalDiscountPercent);
-
     const targetPricePerItem = roundMoney(
       basePerQty * (1 - totalDiscountPercent / 100),
     );
-
-    console.log('Target Price Per Item:', targetPricePerItem);
 
     // const rawAmountPerItem = roundMoney(currentPerQty - targetPricePerItem);
     const rawAmountPerItem = currentPerQty - targetPricePerItem;
@@ -267,9 +255,6 @@ export function cartLinesDiscountsGenerateRun(input) {
       Math.max(rawAmountPerItem, 0),
       currentPerQty,
     );
-
-    console.log('Raw Amount Per Item:', rawAmountPerItem);
-    console.log('Capped Amount Per Item:', cappedAmountPerItem);
 
     if (cappedAmountPerItem > 0) {
       const candidateMessage =
