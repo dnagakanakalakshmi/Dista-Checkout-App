@@ -217,6 +217,9 @@ export function cartLinesDiscountsGenerateRun(input) {
     if (!tiers.length) continue;
 
     const applicableTier = getApplicableTier(tiers, line.quantity);
+
+    if (!applicableTier) continue;
+
     const currentPerQty = Number(line.cost?.amountPerQuantity?.amount);
     const compareAtPerQty = Number(
       line.cost?.compareAtAmountPerQuantity?.amount,
