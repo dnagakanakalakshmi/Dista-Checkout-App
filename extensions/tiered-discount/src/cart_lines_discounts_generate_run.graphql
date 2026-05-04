@@ -1,19 +1,27 @@
 query Input {
+  # shop {
+  #   metafield(namespace: "appstle_subscription", key: "shop_info") {
+  #     value
+  #   }
+  # }
   localization {
     country {
       isoCode
     }
   }
   cart {
+    # attribute(key: "isBVariant") {
+    #   value
+    # }
     lines {
       id
       quantity
-      bargainPrice: attribute(key: "Bargain Price") {
-        value
-      }
-      originalPrice: attribute(key: "Original Price") {
-        value
-      }
+      # bargainPrice: attribute(key: "Bargain Price") {
+      #   value
+      # }
+      # originalPrice: attribute(key: "Original Price") {
+      #   value
+      # }
       merchandise {
         ... on ProductVariant {
           id

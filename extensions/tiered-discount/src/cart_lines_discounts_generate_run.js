@@ -7,15 +7,6 @@ function roundMoney(value) {
   return Math.round(value * 100) / 100;
 }
 
-// function truncateMoney(value) {
-//   if (value >= 0) {
-//     return Math.floor(value * 100) / 100;
-//   }
-
-//   return Math.ceil(value * 100) / 100;
-// }
-
-
 function hasOwn(obj, key) {
   return Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
 }
@@ -188,6 +179,30 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
+  // const shopInfoMetafield = input.shop?.metafield?.value;
+  // let shopInfo;
+
+  // try {
+  //   let firstParse = JSON.parse(shopInfoMetafield);
+  //   if (typeof firstParse === "string") {
+  //     firstParse = firstParse.replace(/\\"/g, '"');
+  //   }
+  //   shopInfo = JSON.parse(firstParse);
+  // } catch (e) {
+  //   console.error("Error parsing shopInfo:", e);
+  //   shopInfo = null;
+  // }
+
+  // const isDistacart = shopInfo?.shop === 'browntaped.myshopify.com';
+  // const isBVariant = input.cart?.attribute?.value;
+
+  // if (isDistacart) {
+  //   // For distacart, only apply discount if isBVariant is true
+  //   if (!isBVariant || isBVariant !== 'true') {
+  //     return { operations: [] }; // Skip if isBVariant is not true
+  //   }
+  // }
+
   const countryCode = normalizeCountry(input.localization?.country?.isoCode);
   const candidates = [];
 
@@ -259,11 +274,8 @@ export function cartLinesDiscountsGenerateRun(input) {
       currentPerQty,
     );
 
-    if (cappedAmountPerItem > 0) {
-      const candidateMessage =
-        tierDiscountPercent > 0
-          ? `EXTRA ${tierDiscountPercent}% OFF`
-          : 'EXTRA DISCOUNT APPLIED';
+    if (cappedAmountPerItem > 0 && tierDiscountPercent > 0) {
+      const candidateMessage = `EXTRA ${tierDiscountPercent}% OFF`;
 
       candidates.push({
         message: candidateMessage,
