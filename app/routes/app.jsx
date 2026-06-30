@@ -23,6 +23,7 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/datesinput">Delivery Templates Input</Link>
+        <Link to="/app/discounts">Manage Discounts</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
