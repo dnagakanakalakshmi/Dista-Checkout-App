@@ -1,6 +1,6 @@
 // app/routes/bulk-discount.jsx
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData, useSearchParams, Link } from "@remix-run/react";
+import { useFetcher, useLoaderData, useSearchParams, useNavigate, Link } from "@remix-run/react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { authenticate, unauthenticated } from "../shopify.server";
@@ -17,6 +17,7 @@ import {
   updateBatchRecord,
   addRedeemCodesToMaster,
 } from "../models/bulkBatch.server";
+import { graphqlRaw } from "../models/shopifyRawGraphql.server";
 
 const CONFIG_NAMESPACE = "$app";
 const CONFIG_KEY = "config";
@@ -103,13 +104,13 @@ export const action = async ({ request }) => {
   const baseDiscount = parseBulkDiscountConfig(formData);
 
   if (intent === "update") {
-    return updateExistingBatch({ admin, formData, functionId, baseDiscount });
+    return updateExistingBatch({ admin, session, formData, functionId, baseDiscount });
   }
 
-  return createNewBatch({ admin, formData, functionId, baseDiscount, shop: session.shop });
+  return createNewBatch({ admin, formData, functionId, baseDiscount, shop: session.shop, session });
 };
 
-async function createNewBatch({ admin, formData, functionId, baseDiscount, shop }) {
+async function createNewBatch({ admin, formData, functionId, baseDiscount, shop, session }) {
   const numberOfCoupons = Number(formData.get("numberOfCoupons"));
   const prefix = formData.get("prefix")?.toString().trim().toUpperCase() || "";
   const batchName = prefix || `Batch ${new Date().toLocaleDateString()}`;
@@ -125,6 +126,7 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop 
 
   const masterDiscountId = await createMasterDiscount({
     admin,
+    session,
     seedCode: couponCodes[0],
     baseDiscount,
     functionId,
@@ -164,7 +166,7 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop 
   };
 }
 
-async function createMasterDiscount({ admin, seedCode, baseDiscount, functionId, batchName }) {
+async function createMasterDiscount({ admin, session, seedCode, baseDiscount, functionId, batchName }) {
   const config = { discounts: [toFunctionDiscount({ ...baseDiscount, title: batchName })] };
 
   const mutation = `#graphql
@@ -177,16 +179,19 @@ async function createMasterDiscount({ admin, seedCode, baseDiscount, functionId,
       }
     }`;
 
-  const response = await admin.graphql(mutation, {
-    variables: {
+  const responseJson = await graphqlRaw(
+    session.shop,
+    session.accessToken,
+    mutation,
+    {
       codeAppDiscount: buildCodeAppDiscountInput({
         discount: { ...baseDiscount, code: seedCode, title: batchName },
         functionId,
         config,
       }),
     },
-  });
-  const responseJson = await response.json();
+    "2026-04",
+  );
 
   if (!responseJson.data) {
     const message = responseJson.errors?.[0]?.message || "Request failed (no data returned)";
@@ -247,7 +252,7 @@ async function runBulkGeneration({
   });
 }
 
-async function updateExistingBatch({ admin, formData, functionId, baseDiscount }) {
+async function updateExistingBatch({ admin, session, formData, functionId, baseDiscount }) {
   const batchId = requiredString(formData, "batchId");
   const prefix = formData.get("prefix")?.toString().trim().toUpperCase() || "";
   const batchName = prefix || undefined;
@@ -274,8 +279,11 @@ async function updateExistingBatch({ admin, formData, functionId, baseDiscount }
       }
     }`;
 
-  const response = await admin.graphql(mutation, {
-    variables: {
+  const responseJson = await graphqlRaw(
+    session.shop,
+    session.accessToken,
+    mutation,
+    {
       id: existingBatch.masterDiscountId,
       codeAppDiscount: buildCodeAppDiscountInput({
         discount: { ...baseDiscount, title: batchName || existingBatch.name },
@@ -285,9 +293,8 @@ async function updateExistingBatch({ admin, formData, functionId, baseDiscount }
         previousCustomerEligibility: existingBatch.template?.customerEligibility,
       }),
     },
-  });
-
-  const responseJson = await response.json();
+    "2026-04",
+  );
 
   if (!responseJson.data) {
     const message = responseJson.errors?.[0]?.message || "Request failed (no data returned)";
@@ -526,6 +533,7 @@ export default function BulkDiscount() {
   const [searchParams] = useSearchParams();
   const batchId = searchParams.get("batchId");
   const isEditing = Boolean(editingBatch);
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState(() => createInitialFormData(editingBatch, editingCustomerLabels));
   const isSubmitting = fetcher.state === "submitting";
@@ -571,6 +579,7 @@ export default function BulkDiscount() {
               `bulk-discounts-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`,
             );
           }
+          navigate("/app/discounts");
         }
       }, 2000);
 
@@ -581,11 +590,12 @@ export default function BulkDiscount() {
   useEffect(() => {
     if (isUpdateResult && updatedCount > 0) {
       shopify.toast.show(`Batch updated successfully`);
-      setShowUpdateBanner(true);
-      const timer = setTimeout(() => setShowUpdateBanner(false), 4000);
-      return () => clearTimeout(timer);
+      navigate("/app/discounts");
+      // setShowUpdateBanner(true);
+      // const timer = setTimeout(() => setShowUpdateBanner(false), 4000);
+      // return () => clearTimeout(timer);
     }
-  }, [isUpdateResult, updatedCount, shopify]);
+  }, [isUpdateResult, updatedCount, shopify, navigate]);
 
   useEffect(() => {
     if (errors.length > 0) {

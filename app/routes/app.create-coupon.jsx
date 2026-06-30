@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData, Link } from "@remix-run/react";
+import { useFetcher, useLoaderData, useNavigate, Link } from "@remix-run/react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { authenticate } from "../shopify.server";
+import { graphqlRaw } from "../models/shopifyRawGraphql.server";
 
 const CONFIG_NAMESPACE = "$app";
 const CONFIG_KEY = "config";
@@ -53,7 +54,7 @@ function parseDiscountTitle(title) {
 }
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const editId = url.searchParams.get("edit");
 
@@ -92,7 +93,9 @@ export const loader = async ({ request }) => {
   // If editing, fetch the coupon data
   let editData = null;
   if (editId) {
-    const discountResponse = await admin.graphql(
+    const discountJson = await graphqlRaw(
+      session.shop,
+      session.accessToken,
       `#graphql
         query GetDiscount($id: ID!) {
           discountNode(id: $id) {
@@ -133,12 +136,9 @@ export const loader = async ({ request }) => {
             }
           }
         }`,
-      {
-        variables: { id: editId },
-      }
+      { id: editId },
+      "2026-04",
     );
-
-    const discountJson = await discountResponse.json();
     const node = discountJson.data.discountNode;
     
     if (node && node.discount.__typename === "DiscountCodeApp") {
@@ -201,7 +201,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request); // add session
   const formData = await request.formData();
 
   const intent = formData.get("intent")?.toString() || "create";
@@ -238,15 +238,10 @@ export const action = async ({ request }) => {
                   shippingDiscounts
                 }
                 codes(first: 1) {
-                  nodes {
-                    code
-                  }
+                  nodes { code }
                 }
               }
-              userErrors {
-                field
-                message
-              }
+              userErrors { field message }
             }
           }`
         : `#graphql
@@ -266,24 +261,20 @@ export const action = async ({ request }) => {
                   productDiscounts
                   shippingDiscounts
                 }
-                appDiscountType {
-                  functionId
-                }
+                appDiscountType { functionId }
                 codes(first: 5) {
-                  nodes {
-                    code
-                  }
+                  nodes { code }
                 }
               }
-              userErrors {
-                field
-                message
-              }
+              userErrors { field message }
             }
           }`;
 
-    const response = await admin.graphql(mutation, {
-      variables: {
+    const responseJson = await graphqlRaw(
+      session.shop,
+      session.accessToken,
+      mutation,
+      {
         ...(intent === "update"
           ? { id: requiredString(formData, "discountId") }
           : {}),
@@ -293,13 +284,18 @@ export const action = async ({ request }) => {
           config,
         }),
       },
-    });
+      "2026-04",
+    );
 
-    const responseJson = await response.json();
     const payload =
       intent === "update"
-        ? responseJson.data.discountCodeAppUpdate
-        : responseJson.data.discountCodeAppCreate;
+        ? responseJson.data?.discountCodeAppUpdate
+        : responseJson.data?.discountCodeAppCreate;
+
+    if (!payload) {
+      errors.push(`${discount.code}: request failed (no data returned)`);
+      continue;
+    }
 
     if (payload.userErrors.length) {
       errors.push(
@@ -408,6 +404,7 @@ export default function Index() {
   const { selectedFunctionId, segments, editData, isEditing } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+  const navigate = useNavigate();
   // Initialize with edit data if available, otherwise empty row
   const [discountRows, setDiscountRows] = useState(() => {
     if (editData) {
@@ -472,8 +469,9 @@ export default function Index() {
         : `${createdDiscounts.length} coupon${createdDiscounts.length > 1 ? 's' : ''} created successfully`;
 
       shopify.toast.show(message);
+      navigate("/app/discounts");
     }
-  }, [createdDiscount?.id, fetcher.data?.intent, shopify, createdDiscounts.length]);
+  }, [createdDiscount?.id, fetcher.data?.intent, shopify, createdDiscounts.length, navigate]);
 
   const addDiscountRow = () => {
     setDiscountRows((rows) => [...rows, createDiscountRow()]);
@@ -1082,16 +1080,18 @@ export default function Index() {
                         })
                       }
                     />
-                    <s-checkbox
-                      label="Combines with shipping discounts"
-                      name={`discounts[${index}][combinesWithShipping]`}
-                      checked={row.combinesWith.shippingDiscounts}
-                      onChange={(e) =>
-                        updateDiscountRow(row.id, {
-                          combinesWith: { ...row.combinesWith, shippingDiscounts: e.target.checked },
-                        })
-                      }
-                    />
+                    {row.discountType !== "free_shipping" && (
+                      <s-checkbox
+                        label="Combines with shipping discounts"
+                        name={`discounts[${index}][combinesWithShipping]`}
+                        checked={row.combinesWith.shippingDiscounts}
+                        onChange={(e) =>
+                          updateDiscountRow(row.id, {
+                            combinesWith: { ...row.combinesWith, shippingDiscounts: e.target.checked },
+                          })
+                        }
+                      />
+                    )}
 
                     {/* --- Active dates --- */}
                     <s-box inlineSize="50%">
@@ -1337,7 +1337,7 @@ function normalizeDiscount(rawDiscount, label) {
     combinesWith: {
       productDiscounts: rawDiscount.combinesWithProduct === "on",
       orderDiscounts: rawDiscount.combinesWithOrder === "on",
-      shippingDiscounts: rawDiscount.combinesWithShipping === "on",
+      shippingDiscounts: "free_shipping" ? false : rawDiscount.combinesWithShipping === "on",
     },
     appliesTo,
     minimumRequirement,
