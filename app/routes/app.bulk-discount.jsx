@@ -3,14 +3,7 @@ import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useSearchParams, useNavigate, Link } from "@remix-run/react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-remix/server";
-import { authenticate, unauthenticated } from "../shopify.server";
-import {
-  startJob,
-  updateJobProgress,
-  setJobCsv,
-  completeJob,
-  failJob,
-} from "../models/bulkJobProgress.server";
+import { authenticate } from "../shopify.server";
 import {
   getBatchRecord,
   addBatchRecord,
@@ -207,49 +200,6 @@ async function createMasterDiscount({ admin, session, seedCode, baseDiscount, fu
   }
 
   return payload.codeAppDiscount.discountId;
-}
-
-async function runBulkGeneration({
-  shop,
-  batchId,
-  masterDiscountId,
-  couponCodes,
-  baseDiscount,
-  functionId,
-  batchName,
-  prefix,
-}) {
-  const { admin } = await unauthenticated.admin(shop);
-
-  // couponCodes[0] is already on Shopify as the seed code used to create
-  // the master discount. Only the remainder needs bulkAdd.
-  const remainingCodes = couponCodes.slice(1);
-
-  const { errors } = await addRedeemCodesToMaster(admin, masterDiscountId, remainingCodes);
-
-  updateJobProgress(batchId, { completed: couponCodes.length, newErrors: errors });
-
-  // Build the CSV from the full code list + shared config, then stash it
-  // on the in-memory job entry so the next progress poll can deliver it
-  // to the client for download. Must happen BEFORE completeJob so the
-  // poller sees csvContent and status=complete in the same response.
-  const csvContent = generateCSV(couponCodes, baseDiscount);
-  setJobCsv(batchId, csvContent);
-  completeJob(batchId);
-
-  // Persist the lightweight batch record — no couponCodes[], no
-  // lastCsvContent, no progress blob. addBatchRecord strips those fields
-  // even if accidentally passed, but we don't pass them here anyway.
-  await addBatchRecord(admin, {
-    batchId,
-    name: batchName,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    prefix,
-    count: couponCodes.length,
-    masterDiscountId,
-    template: { ...baseDiscount, functionId },
-  });
 }
 
 async function updateExistingBatch({ admin, session, formData, functionId, baseDiscount }) {
