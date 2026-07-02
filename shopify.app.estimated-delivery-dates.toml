@@ -1,9 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2c7c2cd0fc2bbf7adced3353d533122e"
-name = "estimated-delivery-dates"
 application_url = "https://example.com"
 embedded = true
+name = "estimated-delivery-dates"
 
 [webhooks]
 api_version = "2026-04"
