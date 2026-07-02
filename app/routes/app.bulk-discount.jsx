@@ -122,8 +122,6 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop,
   const batchId = generateBatchId();
   const couponCodes = generateUniqueCouponCodes(prefix, numberOfCoupons);
 
-  startJob(batchId, numberOfCoupons);
-
   const masterDiscountId = await createMasterDiscount({
     admin,
     session,
@@ -137,10 +135,22 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop,
   let generationErrors = [];
 
   try {
-    await runBulkGeneration({
-      shop, batchId, masterDiscountId, couponCodes, baseDiscount, functionId, batchName, prefix,
-    });
+    const remainingCodes = couponCodes.slice(1);
+    const { errors } = await addRedeemCodesToMaster(admin, masterDiscountId, remainingCodes);
+    generationErrors = errors;
+
     csvContent = generateCSV(couponCodes, baseDiscount);
+
+    await addBatchRecord(admin, {
+      batchId,
+      name: batchName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      prefix,
+      count: couponCodes.length,
+      masterDiscountId,
+      template: { ...baseDiscount, functionId },
+    });
   } catch (err) {
     const message = err instanceof Response ? await err.text() : err?.message || "Bulk generation failed";
     generationErrors.push(message);
