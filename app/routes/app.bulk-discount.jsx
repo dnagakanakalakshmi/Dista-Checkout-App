@@ -712,7 +712,7 @@ export default function BulkDiscount() {
           <s-stack direction="block" gap="base">
             {!hasFunction && (
               <s-banner tone="critical" heading="Discount Function not found">
-                Deploy the max-discount Function extension, then reload this page to create coupons.
+                Deploy the Bulk Discount Generation Function extension, then reload this page to create coupons.
               </s-banner>
             )}
 
@@ -1263,7 +1263,7 @@ export default function BulkDiscount() {
 
 function findDefaultFunction(functions) {
   return (
-    functions.find((f) => f.title.toLowerCase().includes("max")) || functions[0]
+    functions.find((f) => f.title === "Bulk Discount Generation") || functions[0]
   );
 }
 
