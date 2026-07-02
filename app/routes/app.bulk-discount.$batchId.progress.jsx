@@ -19,38 +19,46 @@ import { getBatchRecord } from "../models/bulkBatch.server";
 import { getProgress, getCsvContent } from "../models/bulkJobProgress.server";
 
 export const loader = async ({ request, params }) => {
-  const inMemoryProgress = getProgress(params.batchId);
+  try {
+    const inMemoryProgress = getProgress(params.batchId);
 
-  if (inMemoryProgress) {
+    if (inMemoryProgress) {
+      return Response.json({
+        progress: inMemoryProgress,
+        // CSV is only available on the first complete poll — after that it
+        // may be pruned from memory, which is fine since the client already
+        // downloaded it.
+        csvContent: inMemoryProgress.status === "complete" ? getCsvContent(params.batchId) : null,
+      });
+    }
+
+    // No in-memory entry. Check whether it's a finished batch already
+    // sitting in the registry (page reload after completion, or server
+    // restarted after the job finished).
+    const { admin } = await authenticate.admin(request);
+    const batch = await getBatchRecord(admin, params.batchId);
+
+    if (batch) {
+      // Batch is persisted but CSV is no longer in memory. Return complete
+      // status with no CSV — the client banner will direct the user to
+      // re-export from the Bulk Discount Sets dashboard.
+      return Response.json({
+        progress: { status: "complete", completed: batch.count, total: batch.count, errors: [] },
+        csvContent: null,
+      });
+    }
+
+    // Genuinely unknown — could be a job whose process restarted mid-run.
+    // Report "processing" with no numbers rather than a hard error.
     return Response.json({
-      progress: inMemoryProgress,
-      // CSV is only available on the first complete poll — after that it
-      // may be pruned from memory, which is fine since the client already
-      // downloaded it.
-      csvContent: inMemoryProgress.status === "complete" ? getCsvContent(params.batchId) : null,
-    });
-  }
-
-  // No in-memory entry. Check whether it's a finished batch already
-  // sitting in the registry (page reload after completion, or server
-  // restarted after the job finished).
-  const { admin } = await authenticate.admin(request);
-  const batch = await getBatchRecord(admin, params.batchId);
-
-  if (batch) {
-    // Batch is persisted but CSV is no longer in memory. Return complete
-    // status with no CSV — the client banner will direct the user to
-    // re-export from the Bulk Discount Sets dashboard.
-    return Response.json({
-      progress: { status: "complete", completed: batch.count, total: batch.count, errors: [] },
+      progress: { status: "processing", completed: 0, total: 0, errors: [] },
       csvContent: null,
     });
+  } catch (err) {
+    console.error("PROGRESS LOADER ERROR:", err);
+    return Response.json(
+      { error: err?.message || String(err), stack: err?.stack },
+      { status: 500 },
+    );
   }
-
-  // Genuinely unknown — could be a job whose process restarted mid-run.
-  // Report "processing" with no numbers rather than a hard error.
-  return Response.json({
-    progress: { status: "processing", completed: 0, total: 0, errors: [] },
-    csvContent: null,
-  });
 };
