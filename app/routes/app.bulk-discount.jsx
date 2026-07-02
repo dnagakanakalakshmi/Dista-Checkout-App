@@ -1239,7 +1239,7 @@ export default function BulkDiscount() {
                     : "Generating..."
                   : isEditing
                     ? "Update Batch"
-                    : "Generate Bulk Discounts"}
+                    : "Generate Bulk Discountsss"}
               </s-button>
 
               {!isEditing && (
