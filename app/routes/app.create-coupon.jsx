@@ -1605,6 +1605,12 @@ function normalizeUsageLimit(value, label) {
   return usageLimit;
 }
 
+function padTime(timeValue, fallback) {
+  const raw = timeValue?.toString().trim() || fallback;
+  const [h = "0", m = "0"] = raw.split(":");
+  return `${h.padStart(2, "0")}:${m.padStart(2, "0")}`;
+}
+
 function normalizeStartDateTime(dateValue, timeValue) {
   const rawDate = dateValue?.toString().trim();
 
@@ -1612,7 +1618,7 @@ function normalizeStartDateTime(dateValue, timeValue) {
     return null;
   }
 
-  const time = timeValue?.toString().trim() || "00:00";
+  const time = padTime(timeValue, "00:00");
   return new Date(`${rawDate}T${time}:00.000Z`).toISOString();
 }
 
@@ -1623,7 +1629,7 @@ function normalizeEndDateTime(dateValue, timeValue) {
     return null;
   }
 
-  const time = timeValue?.toString().trim() || "23:59";
+  const time = padTime(timeValue, "23:59");
   return new Date(`${rawDate}T${time}:59.000Z`).toISOString();
 }
 
