@@ -10,6 +10,7 @@ import {
   deleteBatch,
   generateCSVFromLiveDiscounts,
 } from "../models/bulkBatch.server";
+import { removeCouponFromRegistry } from "../models/couponRegistry.server";
 
 const PAGE_SIZE = 10;
 
@@ -25,51 +26,15 @@ function downloadCSV(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
+import { reconcileCouponRegistry } from "../models/couponRegistry.server";
+
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
 
-  const response = await admin.graphql(
-    `#graphql
-      query DashboardData {
-        discountNodes(first: 100) {
-          nodes {
-            id
-            discount {
-              __typename
-              ... on DiscountCodeApp {
-                title
-                status
-                endsAt
-                usageLimit
-                codes(first: 1) {
-                  nodes { code }
-                }
-              }
-            }
-            metafield(namespace: "$app", key: "config") {
-              namespace
-              key
-              value
-              jsonValue
-            }
-          }
-        }
-      }`,
-  );
-
-  const responseJson = await response.json();
   const batches = await reconcileBatchRegistry(admin);
+  const liveNodes = await reconcileCouponRegistry(admin);
 
-  // Each batch now corresponds to exactly ONE master DiscountCodeNode, so
-  // excluding bulk-batch discounts from the single-coupon list is a flat
-  // map rather than the old flatMap over N discountIds per batch.
-  const bulkMasterIds = new Set(batches.map((b) => b.masterDiscountId));
-
-  const coupons = formatCoupons(
-    responseJson.data.discountNodes.nodes.filter(
-      (node) => !bulkMasterIds.has(node.id)
-    )
-  );
+  const coupons = formatCoupons(liveNodes);
 
   return {
     coupons,
@@ -99,6 +64,7 @@ export const action = async ({ request }) => {
     if (payload.userErrors.length) {
       return { errors: payload.userErrors.map((e) => e.message) };
     }
+    await removeCouponFromRegistry(admin, payload.deletedCodeDiscountId);
     return { deletedCoupon: true, deletedDiscountId: payload.deletedCodeDiscountId };
   }
 
@@ -124,6 +90,10 @@ export const action = async ({ request }) => {
       } else {
         deletedIds.push(payload.deletedCodeDiscountId);
       }
+    }
+    // Single batched registry update instead of N separate ones
+    if (deletedIds.length) {
+      await removeCouponsFromRegistry(admin, deletedIds); // note plural
     }
     return { intent: "bulkDeleteCoupons", deletedIds, errors };
   }

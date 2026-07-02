@@ -303,6 +303,9 @@ export const action = async ({ request }) => {
       );
     } else {
       createdDiscounts.push(formatActionCoupon(payload.codeAppDiscount, discount));
+      if (intent !== "update") {
+        await addCouponToRegistry(admin, payload.codeAppDiscount.discountId);
+      }
     }
   }
 
