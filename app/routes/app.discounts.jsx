@@ -10,7 +10,11 @@ import {
   deleteBatch,
   generateCSVFromLiveDiscounts,
 } from "../models/bulkBatch.server";
-import { removeCouponFromRegistry } from "../models/couponRegistry.server";
+import {
+  reconcileCouponRegistry,
+  removeCouponFromRegistry,
+  removeCouponsFromRegistry,
+} from "../models/couponRegistry.server";
 
 const PAGE_SIZE = 10;
 
@@ -25,8 +29,6 @@ function downloadCSV(csv, filename) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
-import { reconcileCouponRegistry } from "../models/couponRegistry.server";
 
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
