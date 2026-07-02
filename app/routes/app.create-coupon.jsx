@@ -4,6 +4,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { authenticate } from "../shopify.server";
 import { graphqlRaw } from "../models/shopifyRawGraphql.server";
+import { addCouponToRegistry } from "../models/couponRegistry.server";
 
 const CONFIG_NAMESPACE = "$app";
 const CONFIG_KEY = "config";
