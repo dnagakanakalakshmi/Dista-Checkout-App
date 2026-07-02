@@ -133,36 +133,26 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop,
     batchName,
   });
 
-  runBulkGeneration({
-    shop,
-    batchId,
-    masterDiscountId,
-    couponCodes,
-    baseDiscount,
-    functionId,
-    batchName,
-    prefix,
-  }).catch(async (err) => {
-    // err may be a Response thrown by writeBatchRegistry or other helpers.
-    // Extract the real message so failJob/logs are actually useful.
-    let message = "Unknown error during generation";
-    if (err instanceof Response) {
-      try {
-        message = await err.text();
-      } catch {
-        message = `HTTP ${err.status} response (body unreadable)`;
-      }
-    } else if (err?.message) {
-      message = err.message;
-    }
-    console.error(`Bulk generation failed for batch ${batchId}:`, message);
-    failJob(batchId, message);
-  });
+  let csvContent = null;
+  let generationErrors = [];
+
+  try {
+    await runBulkGeneration({
+      shop, batchId, masterDiscountId, couponCodes, baseDiscount, functionId, batchName, prefix,
+    });
+    csvContent = generateCSV(couponCodes, baseDiscount);
+  } catch (err) {
+    const message = err instanceof Response ? await err.text() : err?.message || "Bulk generation failed";
+    generationErrors.push(message);
+  }
 
   return {
     batchId,
     started: true,
     totalRequested: numberOfCoupons,
+    completed: true,
+    csvContent,
+    errors: generationErrors,
   };
 }
 
@@ -558,32 +548,11 @@ export default function BulkDiscount() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   useEffect(() => {
-    if (fetcher.data?.started && fetcher.data?.batchId) {
-      const pollBatchId = fetcher.data.batchId;
-      const interval = setInterval(async () => {
-        const res = await fetch(`/app/bulk-discount/${pollBatchId}/progress`, {
-          headers: {
-            Authorization: `Bearer ${await shopify.idToken()}`,
-          },
-        });
-        const data = await res.json();
-        setProgress(data.progress);
-
-        if (data.progress.status === "complete") {
-          clearInterval(interval);
-          shopify.toast.show(`${data.progress.completed} coupons generated successfully`);
-          if (data.csvContent) {
-            const safeName = (formData.prefix || "batch").replace(/[^a-z0-9-]+/gi, "-");
-            downloadCSV(
-              data.csvContent,
-              `bulk-discounts-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`,
-            );
-          }
-          navigate("/app/discounts");
-        }
-      }, 2000);
-
-      return () => clearInterval(interval);
+    if (fetcher.data?.completed && fetcher.data?.csvContent) {
+      shopify.toast.show(`${fetcher.data.totalRequested} coupons generated successfully`);
+      const safeName = (formData.prefix || "batch").replace(/[^a-z0-9-]+/gi, "-");
+      downloadCSV(fetcher.data.csvContent, `bulk-discounts-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`);
+      navigate("/app/discounts");
     }
   }, [fetcher.data]);
 
