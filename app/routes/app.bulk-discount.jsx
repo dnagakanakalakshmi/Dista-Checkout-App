@@ -1114,7 +1114,7 @@ export default function BulkDiscount() {
                   </s-box>
                   <s-box inlineSize="50%">
                     <s-text-field
-                      label="Start time"
+                      label="Start time (UTC)"
                       type="time"
                       name="startsAtTime"
                       value={formData.startsAtTime}
@@ -1143,7 +1143,7 @@ export default function BulkDiscount() {
                   </s-box>
                   <s-box inlineSize="50%">
                     <s-text-field
-                      label="End time"
+                      label="End time (UTC)"
                       type="time"
                       name="endsAtTime"
                       value={formData.endsAtTime}
@@ -1168,7 +1168,7 @@ export default function BulkDiscount() {
                     : "Generating..."
                   : isEditing
                     ? "Update Batch"
-                    : "Generate Bulk Discountsss"}
+                    : "Generate Bulk Discounts"}
               </s-button>
 
               {!isEditing && (

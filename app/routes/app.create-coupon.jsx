@@ -1108,7 +1108,7 @@ export default function Index() {
                     </s-box>
                     <s-box inlineSize="49%">
                       <s-text-field
-                        label="Start time"
+                        label="Start time (UTC)"
                         type="time"
                         name={`discounts[${index}][startsAtTime]`}
                         value={row.startsAtTime}
@@ -1126,7 +1126,7 @@ export default function Index() {
                     </s-box>
                     <s-box inlineSize="49%">
                       <s-text-field
-                        label="End time"
+                        label="End time (UTC)"
                         type="time"
                         name={`discounts[${index}][endsAtTime]`}
                         value={row.endsAtTime}
