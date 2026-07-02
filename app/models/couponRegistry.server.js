@@ -95,9 +95,9 @@ export async function reconcileCouponRegistry(admin) {
     `#graphql
       query CouponRegistryLive($ids: [ID!]!) {
         nodes(ids: $ids) {
-          ... on DiscountNode {
+          ... on DiscountCodeNode {
             id
-            discount {
+            discount: codeDiscount {
               __typename
               ... on DiscountCodeApp {
                 title
@@ -130,7 +130,6 @@ export async function reconcileCouponRegistry(admin) {
       validIds.push(discountIds[i]);
       liveNodes.push(node);
     }
-    // null/mismatched -> deleted outside the app, drop from registry
   });
 
   if (validIds.length !== discountIds.length) {
