@@ -140,4 +140,17 @@ export async function reconcileCouponRegistry(admin) {
   return liveNodes;
 }
 
+export async function removeCouponsFromRegistry(admin, discountIdsToRemove) {
+  if (!discountIdsToRemove.length) return;
+
+  const { shopId, discountIds } = await getCouponRegistry(admin);
+  const toRemove = new Set(discountIdsToRemove);
+  const next = discountIds.filter((id) => !toRemove.has(id));
+
+  // Skip the write entirely if nothing actually changed.
+  if (next.length === discountIds.length) return;
+
+  await writeCouponRegistry(admin, shopId, next);
+}
+
 export { REGISTRY_NAMESPACE, REGISTRY_KEY };
