@@ -207,115 +207,121 @@ export const action = async ({ request }) => {
 
   const intent = formData.get("intent")?.toString() || "create";
 
-  const functionId = requiredString(formData, "functionId");
-  const discounts = parseFormDiscounts(formData);
-  const createdDiscounts = [];
-  const errors = [];
+  try{
+    const functionId = requiredString(formData, "functionId");
+    const discounts = parseFormDiscounts(formData);
+    const createdDiscounts = [];
+    const errors = [];
 
-  for (const discount of discounts) {
-    const config = {
-      discounts: [toFunctionDiscount(discount)],
-    };
+    for (const discount of discounts) {
+      const config = {
+        discounts: [toFunctionDiscount(discount)],
+      };
 
-    const mutation =
-      intent === "update"
-        ? `#graphql
-          mutation UpdateMaxDiscountCode($id: ID!, $codeAppDiscount: DiscountCodeAppInput!) {
-            discountCodeAppUpdate(id: $id, codeAppDiscount: $codeAppDiscount) {
-              codeAppDiscount {
-                discountId
-                title
-                status
-                usageLimit
-                endsAt
-                appliesOncePerCustomer
-                appliesOnOneTimePurchase
-                appliesOnSubscription
-                recurringCycleLimit
-                tags
-                combinesWith {
-                  orderDiscounts
-                  productDiscounts
-                  shippingDiscounts
+      const mutation =
+        intent === "update"
+          ? `#graphql
+            mutation UpdateMaxDiscountCode($id: ID!, $codeAppDiscount: DiscountCodeAppInput!) {
+              discountCodeAppUpdate(id: $id, codeAppDiscount: $codeAppDiscount) {
+                codeAppDiscount {
+                  discountId
+                  title
+                  status
+                  usageLimit
+                  endsAt
+                  appliesOncePerCustomer
+                  appliesOnOneTimePurchase
+                  appliesOnSubscription
+                  recurringCycleLimit
+                  tags
+                  combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                  }
+                  codes(first: 1) {
+                    nodes { code }
+                  }
                 }
-                codes(first: 1) {
-                  nodes { code }
-                }
+                userErrors { field message }
               }
-              userErrors { field message }
-            }
-          }`
-        : `#graphql
-          mutation CreateMaxDiscountCode($codeAppDiscount: DiscountCodeAppInput!) {
-            discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
-              codeAppDiscount {
-                discountId
-                title
-                status
-                appliesOncePerCustomer
-                appliesOnOneTimePurchase
-                appliesOnSubscription
-                recurringCycleLimit
-                tags
-                combinesWith {
-                  orderDiscounts
-                  productDiscounts
-                  shippingDiscounts
+            }`
+          : `#graphql
+            mutation CreateMaxDiscountCode($codeAppDiscount: DiscountCodeAppInput!) {
+              discountCodeAppCreate(codeAppDiscount: $codeAppDiscount) {
+                codeAppDiscount {
+                  discountId
+                  title
+                  status
+                  appliesOncePerCustomer
+                  appliesOnOneTimePurchase
+                  appliesOnSubscription
+                  recurringCycleLimit
+                  tags
+                  combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                  }
+                  appDiscountType { functionId }
+                  codes(first: 5) {
+                    nodes { code }
+                  }
                 }
-                appDiscountType { functionId }
-                codes(first: 5) {
-                  nodes { code }
-                }
+                userErrors { field message }
               }
-              userErrors { field message }
-            }
-          }`;
+            }`;
 
-    const responseJson = await graphqlRaw(
-      session.shop,
-      session.accessToken,
-      mutation,
-      {
-        ...(intent === "update"
-          ? { id: requiredString(formData, "discountId") }
-          : {}),
-        codeAppDiscount: buildCodeAppDiscountInput({
-          discount,
-          functionId,
-          config,
-        }),
-      },
-      "2026-04",
-    );
-
-    const payload =
-      intent === "update"
-        ? responseJson.data?.discountCodeAppUpdate
-        : responseJson.data?.discountCodeAppCreate;
-
-    if (!payload) {
-      errors.push(`${discount.code}: request failed (no data returned)`);
-      continue;
-    }
-
-    if (payload.userErrors.length) {
-      errors.push(
-        ...payload.userErrors.map((error) => `${discount.code}: ${error.message}`),
+      const responseJson = await graphqlRaw(
+        session.shop,
+        session.accessToken,
+        mutation,
+        {
+          ...(intent === "update"
+            ? { id: requiredString(formData, "discountId") }
+            : {}),
+          codeAppDiscount: buildCodeAppDiscountInput({
+            discount,
+            functionId,
+            config,
+          }),
+        },
+        "2026-04",
       );
-    } else {
-      createdDiscounts.push(formatActionCoupon(payload.codeAppDiscount, discount));
-      if (intent !== "update") {
-        await addCouponToRegistry(admin, payload.codeAppDiscount.discountId);
+
+      const payload =
+        intent === "update"
+          ? responseJson.data?.discountCodeAppUpdate
+          : responseJson.data?.discountCodeAppCreate;
+
+      if (!payload) {
+        errors.push(`${discount.code}: request failed (no data returned)`);
+        continue;
+      }
+
+      if (payload.userErrors.length) {
+        errors.push(
+          ...payload.userErrors.map((error) => `${discount.code}: ${error.message}`),
+        );
+      } else {
+        createdDiscounts.push(formatActionCoupon(payload.codeAppDiscount, discount));
+        if (intent !== "update") {
+          await addCouponToRegistry(admin, payload.codeAppDiscount.discountId);
+        }
       }
     }
-  }
 
-  return {
-    discounts: createdDiscounts,
-    discount: createdDiscounts[0],
-    errors,
-    intent,
-  };
+    return {
+      discounts: createdDiscounts,
+      discount: createdDiscounts[0],
+      errors,
+      intent,
+    };
+  }
+  catch(err){
+    const message = err instanceof Response ? await err.text() : err?.message || "Something went wrong";
+    return { intent, errors: [message] };
+  }
 };
 
 function buildCodeAppDiscountInput({ discount, functionId, config }) {

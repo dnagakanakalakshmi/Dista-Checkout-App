@@ -92,15 +92,20 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
 
   const intent = formData.get("intent")?.toString() || "create";
-  const functionId = requiredString(formData, "functionId");
 
-  const baseDiscount = parseBulkDiscountConfig(formData);
+  try {
+    const functionId = requiredString(formData, "functionId");
+    const baseDiscount = parseBulkDiscountConfig(formData);
 
-  if (intent === "update") {
-    return updateExistingBatch({ admin, session, formData, functionId, baseDiscount });
+    if (intent === "update") {
+      return await updateExistingBatch({ admin, session, formData, functionId, baseDiscount });
+    }
+
+    return await createNewBatch({ admin, formData, functionId, baseDiscount, shop: session.shop, session });
+  } catch (err) {
+    const message = err instanceof Response ? await err.text() : err?.message || "Something went wrong";
+    return { intent, errors: [message] };
   }
-
-  return createNewBatch({ admin, formData, functionId, baseDiscount, shop: session.shop, session });
 };
 
 async function createNewBatch({ admin, formData, functionId, baseDiscount, shop, session }) {
@@ -528,9 +533,8 @@ export default function BulkDiscount() {
 
   useEffect(() => {
     if (errors.length > 0) {
-      shopify.toast.show(`${errors.length} error${errors.length > 1 ? "s" : ""} occurred`, {
-        tone: "critical",
-      });
+      const message = errors.length === 1 ? errors[0] : `${errors.length} errors occurred`;
+      shopify.toast.show(message, { isError: true, tone: "critical" });
     }
   }, [errors, shopify]);
 
