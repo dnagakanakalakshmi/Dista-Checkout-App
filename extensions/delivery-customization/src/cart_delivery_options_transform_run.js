@@ -376,7 +376,13 @@ function parseDaysFromTemplates(title, templates) {
 
     if (!match) continue;
 
-    return parseShippingDaysFromText(match[1]);
+    // return parseShippingDaysFromText(match[1]);
+
+    const parsedWindow = parseShippingDaysFromText(match[1]);
+    if (!parsedWindow) continue;
+
+    return { ...parsedWindow, match: match[0] }; // full "6-9 Business day", not just "6-9"
+    
   }
 
   return null;

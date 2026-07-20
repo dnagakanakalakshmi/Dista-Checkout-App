@@ -16,6 +16,7 @@ uid = "18c9f42e-afa5-16ae-d69a-6fe565992275b5522bfc"
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/extension-targets-overview
 
 [[extensions.targeting]]
+# module = "./src/Checkout2.jsx"
 module = "./src/Checkout.jsx"
 target = "purchase.checkout.block.render"
 

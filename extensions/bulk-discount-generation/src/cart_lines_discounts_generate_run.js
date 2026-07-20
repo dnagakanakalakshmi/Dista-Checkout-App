@@ -295,3 +295,98 @@ function roundToCurrency(value) {
 function formatNumber(value) {
   return roundToCurrency(value).toFixed(2).replace(/\.00$/, '');
 }
+
+// import {
+//   DiscountClass,
+//   OrderDiscountSelectionStrategy,
+//   ProductDiscountSelectionStrategy,
+// } from '../generated/api';
+
+// const GIFT_VARIANT_ID = 'gid://shopify/ProductVariant/48343224385765'; // hardcode for now
+// const THRESHOLD = 1000; 
+
+// /**
+//  * @typedef {import("../generated/api").CartInput} RunInput
+//  * @typedef {import("../generated/api").CartLinesDiscountsGenerateRunResult} CartLinesDiscountsGenerateRunResult
+//  */
+
+// /**
+//  * @param {RunInput} input
+//  * @returns {CartLinesDiscountsGenerateRunResult}
+//  */
+// export function cartLinesDiscountsGenerateRun(input) {
+//   if (!input.cart.lines.length) {
+//     return { operations: [] };
+//   }
+
+//   const operations = [];
+
+//   // --- existing order-level percentage/fixed discounts ---
+//   // if (input.discount.discountClasses.includes(DiscountClass.Order)) {
+//   //   const configurations = normalizeConfigurations(
+//   //     input.discount.metafield?.jsonValue,
+//   //   );
+
+//   //   if (configurations.length) {
+//   //     const lines = annotateLines(input.cart.lines);
+//   //     const currencyCode = input.cart.cost.subtotalAmount.currencyCode;
+
+//   //     const candidates = configurations
+//   //       .map((configuration) => buildCandidate(configuration, lines, currencyCode))
+//   //       .filter(Boolean);
+
+//   //     if (candidates.length) {
+//   //       operations.push({
+//   //         orderDiscountsAdd: {
+//   //           candidates,
+//   //           selectionStrategy: OrderDiscountSelectionStrategy.Maximum,
+//   //         },
+//   //       });
+//   //     }
+//   //   }
+//   // }
+
+//   // --- free gift line ---
+//   if (input.discount.discountClasses.includes(DiscountClass.Product)) {
+//     const giftCandidate = buildGiftCandidate(input.cart);
+//     if (giftCandidate) {
+//       operations.push({
+//         productDiscountsAdd: {
+//           candidates: [giftCandidate],
+//           selectionStrategy: ProductDiscountSelectionStrategy.First,
+//         },
+//       });
+//     }
+//   }
+
+//   return { operations };
+// }
+
+// function buildGiftCandidate(cart) {
+//   const giftLine = cart.lines.find(
+//     (line) =>
+//       line.merchandise?.id === GIFT_VARIANT_ID &&
+//       line.autoGiftAttribute?.value === 'true',
+//   );
+
+//   if (!giftLine) {
+//     return null;
+//   }
+
+//   const qualifyingSubtotal = cart.lines
+//     .filter((line) => line.id !== giftLine.id)
+//     .reduce((sum, line) => sum + Number(line.cost.subtotalAmount.amount), 0);
+
+//   if (qualifyingSubtotal < THRESHOLD) {
+//     return null;
+//   }
+
+//   return {
+//     message: 'Free Gift',
+//     targets: [{ cartLine: { id: giftLine.id, quantity: 1 } }],
+//     value: { percentage: { value: '100' } },
+//   };
+// }
+
+// // ...rest of your file (annotateLines, buildCandidate, selectQualifyingLines,
+// // meetsMinimumRequirement, normalizeConfigurations, etc.) stays unchanged
