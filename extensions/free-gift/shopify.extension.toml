@@ -1,0 +1,29 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "t:name"
+handle = "free-gift"
+type = "function"
+uid = "4096a91e-9fd5-a3b4-67c4-5357ee1f1835575bbab4"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [[extensions.targeting]]
+  target = "cart.delivery-options.discounts.generate.run"
+  input_query = "src/cart_delivery_options_discounts_generate_run.graphql"
+  export = "cart-delivery-options-discounts-generate-run"
+
+  [extensions.targeting.input_query_variables]
+  type = "single_json_metafield"
+
+    [extensions.targeting.input_query_variables.single_json_metafield]
+    namespace = "$app"
+    key = "gift_campaign_config"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

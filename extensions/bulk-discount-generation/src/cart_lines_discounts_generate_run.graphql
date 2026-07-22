@@ -24,9 +24,6 @@ query CartInput($collectionIds: [ID!]) {
           }
         }
       }
-      # autoGiftAttribute: attribute(key: "_auto_gift") {
-      #   value
-      # }
     }
   }
   discount {
