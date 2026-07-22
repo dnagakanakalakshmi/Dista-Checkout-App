@@ -9,7 +9,7 @@ const GIFT_CAMPAIGN = {
   logic: 'OR', // 'AND' | 'OR' — how productType/collection/tag results combine
   conditions: {
     productTypes: ['Hoodies', 'T-Shirts'],
-    collectionIds: ['gid://shopify/Collection/111111111'],
+    freegiftCollectionIds: ['gid://shopify/Collection/111111111'],
     tags: ['sale', 'clearance'],
   },
   giftVariantIds: ['gid://shopify/ProductVariant/48343224385765'], // supports multiple gift products
