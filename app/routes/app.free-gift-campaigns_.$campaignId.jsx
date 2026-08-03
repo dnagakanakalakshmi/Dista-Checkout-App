@@ -17,7 +17,7 @@ export const loader = async ({ request, params }) => {
   const { config, discountId } = await getFreeGiftConfig(admin);
 
   if (params.campaignId === "new") {
-    const campaign = normalizeCampaign({ id: crypto.randomUUID(), enabled: true });
+    const campaign = normalizeCampaign({ id: randomUUID(), enabled: true });
     return { campaign, discountId, isNew: true };
   }
 
