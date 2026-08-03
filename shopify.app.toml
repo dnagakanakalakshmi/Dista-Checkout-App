@@ -5,16 +5,10 @@ name = "Dista Checkout App"
 application_url = "https://shopify-app-dista-checkout.dista.care/"
 embedded = true
 
-[webhooks]
-api_version = "2025-07"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
+[app_proxy]
+url = "https://shopify-app-dista-checkout.dista.care"
+subpath = "dista-checkout"
+prefix = "apps"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -29,7 +23,13 @@ redirect_urls = [
   "https://shopify-app-dista-checkout.dista.care/auth/shopify/callback"
 ]
 
-[app_proxy]
-url = "https://shopify-app-dista-checkout.dista.care"
-subpath = "dista-checkout"
-prefix = "apps"
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]

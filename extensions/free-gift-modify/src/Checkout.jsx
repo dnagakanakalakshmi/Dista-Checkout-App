@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 const AUTO_GIFT_KEY = '_auto_gift';
 const AUTO_GIFT_VALUE = 'true';
-const API_URL = '/apps/dista-checkout/apps/free-gift-campaigns';
+const API_URL = 'https://shopify-app-dista-checkout.dista.care/apps/free-gift-campaigns';
 
 export default function extension() {
   render(<FreeGift />, document.body);

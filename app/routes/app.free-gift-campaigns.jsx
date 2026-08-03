@@ -50,8 +50,11 @@ export const action = async ({ request }) => {
       discountId,
       savedConfig,
     );
+    if (newDiscountId && newDiscountId !== discountId) {
+      await saveFreeGiftConfig(admin, savedConfig, newDiscountId);
+    }
     if (errors.length) {
-      return json({ ok: false, config: savedConfig, discountId: newDiscountId, errors });
+      return json({ ok: false, errors });
     }
     return json({ ok: true, config: savedConfig, discountId: newDiscountId, errors: [] });
   } catch (error) {

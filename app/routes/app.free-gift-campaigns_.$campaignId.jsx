@@ -47,16 +47,15 @@ export const action = async ({ request }) => {
     : [...currentConfig.campaigns, campaign];
 
   try {
-    const savedConfig = await saveFreeGiftConfig(
-      admin,
-      { ...currentConfig, campaigns: nextCampaigns },
-      discountId,
-    );
+    const savedConfig = await saveFreeGiftConfig(admin, { ...currentConfig, campaigns: nextCampaigns }, discountId);
     const { discountId: newDiscountId, errors } = await ensureFreeGiftAutomaticDiscount(
       admin,
       discountId,
       savedConfig,
     );
+    if (newDiscountId && newDiscountId !== discountId) {
+      await saveFreeGiftConfig(admin, savedConfig, newDiscountId);
+    }
     if (errors.length) {
       return json({ ok: false, errors });
     }
