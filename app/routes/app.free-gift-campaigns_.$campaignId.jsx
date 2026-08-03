@@ -9,6 +9,7 @@ import {
   ensureFreeGiftAutomaticDiscount,
   normalizeCampaign,
 } from "../models/freeGiftCampaigns.server";
+import { randomUUID } from "node:crypto";
 import { json, redirect } from "@remix-run/node";
 
 export const loader = async ({ request, params }) => {
