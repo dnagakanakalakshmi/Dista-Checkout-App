@@ -140,8 +140,6 @@ export async function ensureFreeGiftAutomaticDiscount(admin, existingDiscountId,
       /not found|does not exist|no longer exists/i.test(error.message || ""),
     );
     if (!staleId) {
-      // Real failure (bad input, permissions, etc.) — surface it rather than
-      // silently spinning up a second automatic discount for the same shop.
       return { discountId: existingDiscountId, errors: errors.map((e) => e.message) };
     }
     // Only reaches create() below when the stored id is genuinely stale.
@@ -161,10 +159,55 @@ export async function ensureFreeGiftAutomaticDiscount(admin, existingDiscountId,
   const payload = createJson.data?.discountAutomaticAppCreate;
   const errors = payload?.userErrors || [];
 
+  if (payload?.automaticAppDiscount?.discountId && !errors.length) {
+    return { discountId: payload.automaticAppDiscount.discountId, errors: [] };
+  }
+
+  // Create failed. If it failed specifically because a discount with this
+  // title already exists on the shop, our stored id has been lost — find
+  // the real one by title and update it instead of failing forever.
+  const titleCollision = errors.some((error) => /unique/i.test(error.message || ""));
+  if (titleCollision) {
+    const recovered = await findExistingAutomaticDiscountId();
+    if (recovered) {
+      const updateResponse = await admin.graphql(
+        `#graphql
+          mutation UpdateFreeGiftDiscount($id: ID!, $automaticAppDiscount: DiscountAutomaticAppInput!) {
+            discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $automaticAppDiscount) {
+              automaticAppDiscount { discountId }
+              userErrors { field message }
+            }
+          }`,
+        { variables: { id: recovered, automaticAppDiscount: input } },
+      );
+      const updateJson = await updateResponse.json();
+      const updatePayload = updateJson.data?.discountAutomaticAppUpdate;
+      const updateErrors = updatePayload?.userErrors || [];
+      return {
+        discountId: updatePayload?.automaticAppDiscount?.discountId || recovered,
+        errors: updateErrors.map((e) => e.message),
+      };
+    }
+  }
+
   return {
     discountId: payload?.automaticAppDiscount?.discountId || existingDiscountId,
     errors: errors.map((error) => error.message),
   };
+
+  async function findExistingAutomaticDiscountId() {
+    const searchResponse = await admin.graphql(
+      `#graphql
+        query FindFreeGiftDiscount($query: String!) {
+          automaticDiscountNodes(first: 5, query: $query) {
+            nodes { id }
+          }
+        }`,
+      { variables: { query: `title:'${FREE_GIFT_DISCOUNT_TITLE}'` } },
+    );
+    const searchJson = await searchResponse.json();
+    return searchJson.data?.automaticDiscountNodes?.nodes?.[0]?.id || null;
+  }
 }
 
 export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines }) {
