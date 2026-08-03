@@ -26,6 +26,11 @@ export function cartDeliveryOptionsDiscountsGenerateRun(input) {
     return {operations: []};
   }
 
+  const cartAttributeValue = input.cart.attribute?.value ?? null;
+  if (!meetsCartAttributeCondition(freeShippingConfig, cartAttributeValue)) {
+    return {operations: []};
+  }
+
   const lines = annotateLines(input.cart.lines);
   const qualifyingLines = selectQualifyingLines(freeShippingConfig, lines);
 
@@ -61,6 +66,39 @@ export function cartDeliveryOptionsDiscountsGenerateRun(input) {
       },
     ],
   };
+}
+
+function meetsCartAttributeCondition(configuration, cartAttributeValue) {
+  const cartAttribute = configuration.cartAttribute;
+
+  if (!cartAttribute || cartAttribute.mode !== 'match') {
+    return true;
+  }
+
+  if (cartAttributeValue === null || cartAttributeValue === undefined) {
+    return false;
+  }
+
+  if (!cartAttribute.value) {
+    return true;
+  }
+
+  return cartAttributeValue === cartAttribute.value;
+}
+
+function normalizeCartAttribute(rawCartAttribute) {
+  if (!rawCartAttribute || typeof rawCartAttribute !== 'object') {
+    return {mode: 'none', key: '', value: ''};
+  }
+
+  const key = typeof rawCartAttribute.key === 'string' ? rawCartAttribute.key.trim() : '';
+
+  if (!key) {
+    return {mode: 'none', key: '', value: ''};
+  }
+
+  const value = typeof rawCartAttribute.value === 'string' ? rawCartAttribute.value.trim() : '';
+  return {mode: 'match', key, value};
 }
 
 // Mirrors annotateLines in the order discount function — only the fields
@@ -137,6 +175,7 @@ function normalizeConfigurations(rawConfiguration) {
       title: typeof discount.title === 'string' ? discount.title.trim() : '',
       appliesTo: normalizeAppliesTo(discount.appliesTo),
       minimumRequirement: normalizeMinimumRequirement(discount.minimumRequirement),
+      cartAttribute: normalizeCartAttribute(discount.cartAttribute),
     }));
 }
 

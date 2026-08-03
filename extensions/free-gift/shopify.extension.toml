@@ -12,22 +12,10 @@ description = "t:description"
   input_query = "src/cart_lines_discounts_generate_run.graphql"
   export = "cart-lines-discounts-generate-run"
 
-  [[extensions.targeting]]
-  target = "cart.delivery-options.discounts.generate.run"
-  input_query = "src/cart_delivery_options_discounts_generate_run.graphql"
-  export = "cart-delivery-options-discounts-generate-run"
-
-  [extensions.targeting.input_query_variables]
-  type = "single_json_metafield"
-
-    [extensions.targeting.input_query_variables.single_json_metafield]
-    namespace = "$app"
-    key = "gift_campaign_config"
+  [extensions.input.variables]
+  namespace = "$app"
+  key = "freegift-collection-ids"
 
   [extensions.build]
   command = ""
   path = "dist/function.wasm"
-
-  [extensions.input.variables]
-  namespace = "$app"
-  key = "freegift-collection-ids"

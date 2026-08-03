@@ -30,9 +30,10 @@ export function cartLinesDiscountsGenerateRun(input) {
   const lines = annotateLines(input.cart.lines);
 
   const currencyCode = input.cart.cost.subtotalAmount.currencyCode;
+  const cartAttributeValue = input.cart.attribute?.value ?? null;
 
   const candidates = configurations
-    .map((configuration) => buildCandidate(configuration, lines, currencyCode))
+    .map((configuration) => buildCandidate(configuration, lines, currencyCode, cartAttributeValue))
     .filter(Boolean);
 
 
@@ -73,7 +74,33 @@ function annotateLines(rawLines) {
   });
 }
 
-function buildCandidate(configuration, lines, currencyCode) {
+// Cart attribute gate: "none" (no key configured) always passes — coupon
+// applies regardless of cart attributes. "match" requires the attribute to
+// be present on the cart; if a specific value was configured, it must match
+// exactly, otherwise presence of the key alone is enough.
+function meetsCartAttributeCondition(configuration, cartAttributeValue) {
+  const cartAttribute = configuration.cartAttribute;
+
+  if (!cartAttribute || cartAttribute.mode !== 'match') {
+    return true;
+  }
+
+  if (cartAttributeValue === null || cartAttributeValue === undefined) {
+    return false;
+  }
+
+  if (!cartAttribute.value) {
+    return true;
+  }
+
+  return cartAttributeValue === cartAttribute.value;
+}
+
+function buildCandidate(configuration, lines, currencyCode, cartAttributeValue) {
+
+  if (!meetsCartAttributeCondition(configuration, cartAttributeValue)) {
+    return null;
+  }
 
   const qualifyingLines = selectQualifyingLines(configuration, lines);
 
@@ -193,7 +220,6 @@ function normalizeConfiguration(rawDiscount) {
   const discountValue = parseMoney(rawDiscount.discountValue);
   const maxDiscountAmount = parseMoney(rawDiscount.maxDiscountAmount);
 
-
   if (!['percentage', 'fixed'].includes(discountType)) {
     return null;
   }
@@ -204,7 +230,6 @@ function normalizeConfiguration(rawDiscount) {
     return null;
   }
 
-
   return {
     discountType,
     discountValue,
@@ -212,6 +237,7 @@ function normalizeConfiguration(rawDiscount) {
     title: typeof rawDiscount.title === 'string' ? rawDiscount.title.trim() : '',
     appliesTo: normalizeAppliesTo(rawDiscount.appliesTo),
     minimumRequirement: normalizeMinimumRequirement(rawDiscount.minimumRequirement),
+    cartAttribute: normalizeCartAttribute(rawDiscount.cartAttribute),
   };
 }
 
@@ -251,6 +277,21 @@ function normalizeMinimumRequirement(rawMinimumRequirement) {
   }
 
   return {mode, value};
+}
+
+function normalizeCartAttribute(rawCartAttribute) {
+  if (!rawCartAttribute || typeof rawCartAttribute !== 'object') {
+    return {mode: 'none', key: '', value: ''};
+  }
+
+  const key = typeof rawCartAttribute.key === 'string' ? rawCartAttribute.key.trim() : '';
+
+  if (!key) {
+    return {mode: 'none', key: '', value: ''};
+  }
+
+  const value = typeof rawCartAttribute.value === 'string' ? rawCartAttribute.value.trim() : '';
+  return {mode: 'match', key, value};
 }
 
 function calculateDiscountAmount(configuration, subtotal) {

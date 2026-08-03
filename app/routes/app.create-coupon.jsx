@@ -178,6 +178,7 @@ export const loader = async ({ request }) => {
         maxDiscountAmount: displayConfig?.maxDiscountAmount || "",
         appliesTo: normalizeAppliesToForEdit(displayConfig?.appliesTo),
         minimumRequirement: displayConfig?.minimumRequirement || { mode: "none", value: "" },
+        cartAttribute: displayConfig?.cartAttribute || { key: "", value: "" },
         purchaseType: purchaseType,
         recurringCycleLimit: node.discount.recurringCycleLimit || 0,
         tags: (node.discount.tags || []).join(", "),
@@ -371,6 +372,8 @@ function buildCodeAppDiscountInput({ discount, functionId, config }) {
             discount.appliesTo?.mode === "collections"
               ? discount.appliesTo.resources.map((r) => r.id)
               : [],
+        cartAttributeKey:
+          discount.cartAttribute?.mode === "match" ? discount.cartAttribute.key : "",
         }),
       },
     ],
@@ -448,6 +451,7 @@ export default function Index() {
         recurringPaymentLimit: editData.recurringCycleLimit !== undefined && editData.recurringCycleLimit !== null
           ? toRecurringPaymentLimitState(editData.recurringCycleLimit)
           : { mode: "all", value: "" },
+        cartAttribute: editData.cartAttribute || { key: "", value: "" },
         tags: editData.tags || "",
       }];
     }
@@ -518,6 +522,7 @@ export default function Index() {
         minimumRequirement: coupon.minimumRequirement,
         purchaseType: coupon.purchaseType,
         recurringPaymentLimit: coupon.recurringPaymentLimit,
+        cartAttribute: coupon.cartAttribute,
         tags: (coupon.tags || []).join(", "),
       }),
     ]);
@@ -747,6 +752,8 @@ export default function Index() {
                       </s-box>
                     </s-stack>
 
+
+                    {/* --- Cart Attributes --- */}
                     {row.appliesTo.mode !== "all" && (
                       <s-stack direction="block" gap="tight">
                         <s-button
@@ -780,6 +787,37 @@ export default function Index() {
                         />
                       </s-stack>
                     )}
+
+                    <s-stack direction="inline" justifyContent="space-between" alignItems="center">
+                      <s-box inlineSize="50%">
+                        <s-text-field
+                          label="Cart attribute key"
+                          name={`discounts[${index}][cartAttributeKey]`}
+                          placeholder="e.g. gift-wrap"
+                          value={row.cartAttribute.key}
+                          onChange={(e) =>
+                            updateDiscountRow(row.id, {
+                              cartAttribute: { ...row.cartAttribute, key: e.target.value },
+                            })
+                          }
+                          helpText="Optional: only apply this coupon when the cart has this attribute. Leave blank to apply regardless of cart attributes."
+                        />
+                      </s-box>
+                      <s-box inlineSize="49%">
+                        <s-text-field
+                          label="Cart attribute value"
+                          name={`discounts[${index}][cartAttributeValue]`}
+                          placeholder="Optional — leave blank to match any value"
+                          value={row.cartAttribute.value}
+                          onChange={(e) =>
+                            updateDiscountRow(row.id, {
+                              cartAttribute: { ...row.cartAttribute, value: e.target.value },
+                            })
+                          }
+                          disabled={!row.cartAttribute.key}
+                        />
+                      </s-box>
+                    </s-stack>
 
                     {/* --- Minimum requirement + Customer eligibility --- */}
                     <s-stack direction="inline" gap="base" alignItems="start">
@@ -1251,11 +1289,25 @@ function parseFormDiscounts(formData) {
         purchaseType: formData.get(`discounts[${index}][purchaseType]`),
         recurringPaymentLimitMode: formData.get(`discounts[${index}][recurringPaymentLimitMode]`),
         recurringPaymentLimitValue: formData.get(`discounts[${index}][recurringPaymentLimitValue]`),
+        cartAttributeKey: formData.get(`discounts[${index}][cartAttributeKey]`),
+        cartAttributeValue: formData.get(`discounts[${index}][cartAttributeValue]`),
         tags: formData.get(`discounts[${index}][tags]`),
       },
       `Coupon ${index + 1}`,
     ),
   );
+}
+
+function normalizeCartAttribute(keyRaw, valueRaw) {
+  const key = keyRaw?.toString().trim() || "";
+
+  // Nothing entered -> no restriction, coupon applies regardless of cart attributes.
+  if (!key) {
+    return { mode: "none", key: "", value: "" };
+  }
+
+  const value = valueRaw?.toString().trim() || "";
+  return { mode: "match", key, value };
 }
 
 function normalizeDiscount(rawDiscount, label) {
@@ -1268,6 +1320,8 @@ function normalizeDiscount(rawDiscount, label) {
   const usageLimit = normalizeUsageLimit(rawDiscount.usageLimit, label);
   const startsAt = normalizeStartDateTime(rawDiscount.startsAtDate, rawDiscount.startsAtTime);
   const endsAt = normalizeEndDateTime(rawDiscount.endsAt, rawDiscount.endsAtTime);
+
+  const cartAttribute = normalizeCartAttribute(rawDiscount.cartAttributeKey, rawDiscount.cartAttributeValue);
 
   // Validate the code format
   const validation = validateCouponCode(code);
@@ -1345,11 +1399,12 @@ function normalizeDiscount(rawDiscount, label) {
     combinesWith: {
       productDiscounts: rawDiscount.combinesWithProduct === "on",
       orderDiscounts: rawDiscount.combinesWithOrder === "on",
-      shippingDiscounts: "free_shipping" ? false : rawDiscount.combinesWithShipping === "on",
+      shippingDiscounts: discountType === "free_shipping" ? false : rawDiscount.combinesWithShipping === "on",
     },
     appliesTo,
     minimumRequirement,
     customerEligibility,
+    cartAttribute,
     appliesOnOneTimePurchase: purchaseType.oneTime,
     appliesOnSubscription: purchaseType.subscription,
     recurringCycleLimit,
@@ -1514,6 +1569,7 @@ function toFunctionDiscount(discount) {
     appliesTo: discount.appliesTo,
     minimumRequirement: discount.minimumRequirement,
     customerEligibility: discount.customerEligibility,
+    cartAttribute: discount.cartAttribute,
   };
 }
 
@@ -1546,6 +1602,7 @@ function createDiscountRow(values = {}) {
     },
     purchaseType: values.purchaseType || "both",
     recurringPaymentLimit: values.recurringPaymentLimit || { mode: "all", value: "" },
+    cartAttribute: values.cartAttribute || { key: "", value: "" },
     tags: values.tags || "",
   };
 }
@@ -1567,6 +1624,7 @@ function formatActionCoupon(codeAppDiscount, discountConfig) {
     maxDiscountAmount: discountConfig.maxDiscountAmount,
     appliesTo: discountConfig.appliesTo,
     minimumRequirement: discountConfig.minimumRequirement,
+    cartAttribute: discountConfig.cartAttribute,
     purchaseType:
       (codeAppDiscount.appliesOnOneTimePurchase ?? discountConfig.appliesOnOneTimePurchase) &&
       (codeAppDiscount.appliesOnSubscription ?? discountConfig.appliesOnSubscription)

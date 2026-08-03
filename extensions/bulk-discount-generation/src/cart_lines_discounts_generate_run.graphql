@@ -1,5 +1,8 @@
-query CartInput($collectionIds: [ID!]) {
+query CartInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
   cart {
+    attribute(key: $cartAttributeKey) {
+      value
+    }
     cost {
       subtotalAmount {
         amount

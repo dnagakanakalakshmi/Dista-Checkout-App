@@ -3,6 +3,11 @@ query CartInput($freegiftCollectionIds: [ID!]!, $tags: [String!]!) {
     lines {
       id
       quantity
+      cost {
+        totalAmount {
+          amount
+        }
+      }
       merchandise {
         __typename
         ... on ProductVariant {

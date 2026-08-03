@@ -1,20 +1,23 @@
-query DeliveryInput($collectionIds: [ID!]) {
+query DeliveryInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
   cart {
-    cost{
-      subtotalAmount{
+    attribute(key: $cartAttributeKey) {
+      value
+    }
+    cost {
+      subtotalAmount {
         amount
       }
     }
-    lines{
+    lines {
       quantity
-      cost{
-        subtotalAmount{
+      cost {
+        subtotalAmount {
           amount
         }
       }
-      merchandise{
-        ... on ProductVariant{
-          product{
+      merchandise {
+        ... on ProductVariant {
+          product {
             id
             inAnyCollection(ids: $collectionIds)
           }

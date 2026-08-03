@@ -1,0 +1,11 @@
+{% comment %} extensions/free-gift-cart/blocks/free-gift-cart.liquid {% endcomment %}
+<div id="free-gift-cart-sync" data-shop="{{ shop.permanent_domain }}"></div>
+<script src="{{ 'free-gift-cart.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Free Gift Cart Sync",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

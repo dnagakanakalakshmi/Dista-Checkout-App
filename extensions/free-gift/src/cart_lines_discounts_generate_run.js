@@ -1,11 +1,9 @@
 import {
   DiscountClass,
-  OrderDiscountSelectionStrategy,
   ProductDiscountSelectionStrategy,
 } from '../generated/api';
 
-const GIFT_VARIANT_ID = 'gid://shopify/ProductVariant/48343224385765'; // hardcode for now
-const THRESHOLD = 1000; 
+const AUTO_GIFT_KEY_VALUE = 'true';
 
 /**
  * @typedef {import("../generated/api").CartInput} RunInput
@@ -17,50 +15,119 @@ const THRESHOLD = 1000;
  * @returns {CartLinesDiscountsGenerateRunResult}
  */
 export function cartLinesDiscountsGenerateRun(input) {
-  if (!input.cart.lines.length) {
+  if (!input.cart.lines.length || !input.discount.discountClasses.includes(DiscountClass.Product)) {
     return { operations: [] };
   }
 
-  const operations = [];
-  
-  // --- free gift line ---
-  if (input.discount.discountClasses.includes(DiscountClass.Product)) {
-    const giftCandidate = buildGiftCandidate(input.cart);
-    if (giftCandidate) {
-      operations.push({
-        productDiscountsAdd: {
-          candidates: [giftCandidate],
-          selectionStrategy: ProductDiscountSelectionStrategy.First,
-        },
-      });
-    }
+  const campaigns = normalizeCampaigns(input.discount.metafield?.jsonValue);
+  if (!campaigns.length) {
+    return { operations: [] };
   }
 
-  return { operations };
-}
-
-function buildGiftCandidate(cart) {
-  const giftLine = cart.lines.find(
-    (line) =>
-      line.merchandise?.id === GIFT_VARIANT_ID &&
-      line.autoGiftAttribute?.value === 'true',
+  const regularLines = input.cart.lines.filter((line) => !isAutoGiftLine(line));
+  const subtotal = regularLines.reduce(
+    (sum, line) => sum + Number(line.cost?.totalAmount?.amount || 0),
+    0,
   );
 
-  if (!giftLine) {
-    return null;
+  const qualifiedGiftVariantIds = new Set(
+    campaigns
+      .filter((campaign) => campaignQualifies(campaign, regularLines, subtotal))
+      .flatMap((campaign) => campaign.giftVariantIds),
+  );
+
+  if (!qualifiedGiftVariantIds.size) {
+    return { operations: [] };
   }
 
-  const qualifyingSubtotal = cart.lines
-    .filter((line) => line.id !== giftLine.id)
-    .reduce((sum, line) => sum + Number(line.cost.subtotalAmount.amount), 0);
+  const candidates = input.cart.lines
+    .filter((line) =>
+      isAutoGiftLine(line) &&
+      qualifiedGiftVariantIds.has(line.merchandise?.id),
+    )
+    .map((line) => ({
+      message: 'Free Gift',
+      targets: [{ cartLine: { id: line.id, quantity: 1 } }],
+      value: { percentage: { value: '100' } },
+    }));
 
-  if (qualifyingSubtotal < THRESHOLD) {
-    return null;
+  if (!candidates.length) {
+    return { operations: [] };
   }
 
   return {
-    message: 'Free Gift',
-    targets: [{ cartLine: { id: giftLine.id, quantity: 1 } }],
-    value: { percentage: { value: '100' } },
+    operations: [
+      {
+        productDiscountsAdd: {
+          candidates,
+          selectionStrategy: ProductDiscountSelectionStrategy.All,
+        },
+      },
+    ],
   };
+}
+
+function normalizeCampaigns(config) {
+  const campaigns = Array.isArray(config?.campaigns) ? config.campaigns : [];
+  return campaigns
+    .filter((campaign) => campaign?.enabled)
+    .map((campaign) => ({
+      subtotalThreshold: Number(campaign.subtotalThreshold || 0),
+      logic: campaign.logic === 'AND' ? 'AND' : 'OR',
+      giftVariantIds: uniqueStrings(campaign.giftVariantIds),
+      conditions: {
+        productTypes: uniqueStrings(campaign.conditions?.productTypes),
+        collectionIds: uniqueStrings(campaign.conditions?.collectionIds),
+        tags: uniqueStrings(campaign.conditions?.tags),
+      },
+    }))
+    .filter((campaign) => campaign.giftVariantIds.length);
+}
+
+function isLineEligible(conditions, line) {
+  const product = line.merchandise?.product;
+  if (conditions.productTypes.length) {
+    const wanted = new Set(conditions.productTypes.map((t) => t.toLowerCase()));
+    if (wanted.has((product?.productType || "").toLowerCase())) return true;
+  }
+  if (conditions.collectionIds.length) {
+    if (product?.inAnyCollection) return true;
+  }
+  if (conditions.tags.length) {
+    const wanted = new Set(conditions.tags.map((t) => t.toLowerCase()));
+    if (product?.hasTags?.some((r) => r.hasTag && wanted.has(r.tag.toLowerCase()))) return true;
+  }
+  return false;
+}
+
+function campaignQualifies(campaign, lines, subtotal) {
+  const conditions = campaign.conditions;
+  const hasConditions = conditions.productTypes.length || conditions.collectionIds.length || conditions.tags.length;
+
+  if (!hasConditions) {
+    return subtotal >= campaign.subtotalThreshold;
+  }
+
+  const eligibleLines = lines.filter((line) => isLineEligible(conditions, line));
+
+  if (campaign.logic === "AND") {
+    if (!eligibleLines.length) return false;
+    const eligibleSubtotal = eligibleLines.reduce(
+      (sum, line) => sum + Number(line.cost?.totalAmount?.amount || 0),
+      0,
+    );
+    return eligibleSubtotal >= campaign.subtotalThreshold;
+  }
+
+  return subtotal >= campaign.subtotalThreshold || eligibleLines.length > 0;
+}
+
+function isAutoGiftLine(line) {
+  return line.autoGiftAttribute?.value === AUTO_GIFT_KEY_VALUE;
+}
+
+function uniqueStrings(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean))];
 }

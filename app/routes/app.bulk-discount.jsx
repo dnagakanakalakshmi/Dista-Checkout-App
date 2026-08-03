@@ -444,6 +444,7 @@ function buildCodeAppDiscountInput({ discount, functionId, config, isUpdate = fa
             discount.appliesTo?.mode === "collections"
               ? discount.appliesTo.resources.map((r) => r.id)
               : [],
+        cartAttributeKey: "",
         }),
       },
     ],

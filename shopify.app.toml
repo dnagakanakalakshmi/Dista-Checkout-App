@@ -28,3 +28,8 @@ redirect_urls = [
   "https://shopify-app-dista-checkout.dista.care/auth/callback",
   "https://shopify-app-dista-checkout.dista.care/auth/shopify/callback"
 ]
+
+[app_proxy]
+url = "https://shopify-app-dista-checkout.dista.care"
+subpath = "dista-checkout"
+prefix = "apps"
