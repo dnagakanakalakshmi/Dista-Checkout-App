@@ -169,7 +169,7 @@ export default function FreeGiftCampaignForm() {
             max={100000}
             step={1}
             value={campaign.subtotalThreshold ?? ""}
-            helpText="Leave blank for no subtotal requirement. Entering 0 will prevent this campaign from ever qualifying."
+            placeholder="Leave blank for no subtotal requirement. Entering 0 will prevent this campaign from ever qualifying."
             onChange={(event) => update({ subtotalThreshold: event.target.value })}
           />
 
