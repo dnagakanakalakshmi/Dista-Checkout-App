@@ -6,10 +6,23 @@ import { evaluateFreeGiftCampaignsWithAdmin } from "../models/freeGiftCampaigns.
 function getCorsHeaders(request) {
   const origin = request?.headers?.get?.("origin") || "*";
   return {
-    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
+}
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function loader({ request }) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  return new Response("Method not allowed", { status: 405 });
 }
 
 export const action = async ({ request }) => {
