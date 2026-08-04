@@ -302,7 +302,7 @@ export function normalizeCampaign(campaign) {
     id: campaign.id || `fg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title: String(campaign.title || "Free Gift Campaign").trim(),
     enabled: Boolean(campaign.enabled),
-    subtotalThreshold: Math.max(0, Number(campaign.subtotalThreshold || 0)),
+    subtotalThreshold: normalizeThreshold(campaign.subtotalThreshold),
     logic: campaign.logic === "AND" ? "AND" : "OR",
     giftVariantIds: uniqueStrings(campaign.giftVariantIds),
     giftProducts: Array.isArray(campaign.giftProducts) ? campaign.giftProducts : [],
@@ -313,6 +313,15 @@ export function normalizeCampaign(campaign) {
       tags: uniqueStrings(campaign.conditions?.tags),
     },
   };
+}
+
+// null/undefined/"" => null ("not configured", no subtotal restriction)
+// any other value => clamped 0-100000 (explicit 0 stays 0, meaning "can never qualify")
+function normalizeThreshold(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+  return Math.min(100000, Math.max(0, num));
 }
 
 function isLineEligible(conditions, facts) {
@@ -333,12 +342,12 @@ function isLineEligible(conditions, facts) {
 }
 
 export function campaignQualifies(campaign, lines, productFacts, subtotal) {
-  const threshold = Number(campaign.subtotalThreshold || 0);
+  const threshold = campaign.subtotalThreshold; // null | number
   const conditions = campaign.conditions || {};
   const hasConditions = conditions.productTypes?.length || conditions.collectionIds?.length || conditions.tags?.length;
 
   if (!hasConditions) {
-    return subtotal >= threshold;
+    return thresholdSatisfied(threshold, subtotal);
   }
 
   const eligibleLines = lines.filter((line) => isLineEligible(conditions, productFacts[line.merchandiseId]));
@@ -346,11 +355,20 @@ export function campaignQualifies(campaign, lines, productFacts, subtotal) {
   if (campaign.logic === "AND") {
     if (!eligibleLines.length) return false;
     const eligibleSubtotal = eligibleLines.reduce((sum, line) => sum + Number(line.lineSubtotal || 0), 0);
-    return eligibleSubtotal >= threshold;
+    return thresholdSatisfied(threshold, eligibleSubtotal);
   }
 
   // OR
-  return subtotal >= threshold || eligibleLines.length > 0;
+  return thresholdSatisfied(threshold, subtotal) || eligibleLines.length > 0;
+}
+
+// null = merchant never set a threshold => no subtotal restriction, always satisfied.
+// 0 = merchant explicitly typed 0 => treated as impossible, per your earlier decision.
+// >0 = normal comparison.
+function thresholdSatisfied(threshold, subtotal) {
+  if (threshold === null || threshold === undefined) return true;
+  if (threshold === 0) return false;
+  return subtotal >= threshold;
 }
 
 function buildAutomaticDiscountInput(config) {

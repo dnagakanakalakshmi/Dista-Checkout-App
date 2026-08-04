@@ -112,7 +112,10 @@ export default function FreeGiftCampaignForm() {
   const save = () => {
     const payload = {
       ...campaign,
-      subtotalThreshold: Number(campaign.subtotalThreshold || 0),
+      subtotalThreshold:
+        campaign.subtotalThreshold === "" || campaign.subtotalThreshold === null || campaign.subtotalThreshold === undefined
+          ? null
+          : Number(campaign.subtotalThreshold),
       giftVariantIds: campaign.giftProducts?.map((p) => p.variantId).filter(Boolean) || campaign.giftVariantIds || [],
       conditions: {
         ...campaign.conditions,
@@ -163,9 +166,10 @@ export default function FreeGiftCampaignForm() {
           <s-number-field
             label="Subtotal threshold"
             min={0}
+            max={100000}
             step={1}
-            value={campaign.subtotalThreshold}
-            helpText="The cart subtotal must be at least this amount before condition checks can add a gift."
+            value={campaign.subtotalThreshold ?? ""}
+            helpText="Leave blank for no subtotal requirement. Entering 0 will prevent this campaign from ever qualifying."
             onChange={(event) => update({ subtotalThreshold: event.target.value })}
           />
 

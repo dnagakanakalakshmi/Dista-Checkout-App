@@ -72,7 +72,7 @@ function normalizeCampaigns(config) {
   return campaigns
     .filter((campaign) => campaign?.enabled)
     .map((campaign) => ({
-      subtotalThreshold: Number(campaign.subtotalThreshold || 0),
+      subtotalThreshold: normalizeThreshold(campaign.subtotalThreshold),
       logic: campaign.logic === 'AND' ? 'AND' : 'OR',
       giftVariantIds: uniqueStrings(campaign.giftVariantIds),
       conditions: {
@@ -82,6 +82,13 @@ function normalizeCampaigns(config) {
       },
     }))
     .filter((campaign) => campaign.giftVariantIds.length);
+}
+
+function normalizeThreshold(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  if (Number.isNaN(num)) return null;
+  return num;
 }
 
 function isLineEligible(conditions, line) {
@@ -105,7 +112,7 @@ function campaignQualifies(campaign, lines, subtotal) {
   const hasConditions = conditions.productTypes.length || conditions.collectionIds.length || conditions.tags.length;
 
   if (!hasConditions) {
-    return subtotal >= campaign.subtotalThreshold;
+    return thresholdSatisfied(campaign.subtotalThreshold, subtotal);
   }
 
   const eligibleLines = lines.filter((line) => isLineEligible(conditions, line));
@@ -116,10 +123,16 @@ function campaignQualifies(campaign, lines, subtotal) {
       (sum, line) => sum + Number(line.cost?.totalAmount?.amount || 0),
       0,
     );
-    return eligibleSubtotal >= campaign.subtotalThreshold;
+    return thresholdSatisfied(campaign.subtotalThreshold, eligibleSubtotal);
   }
 
-  return subtotal >= campaign.subtotalThreshold || eligibleLines.length > 0;
+  return thresholdSatisfied(campaign.subtotalThreshold, subtotal) || eligibleLines.length > 0;
+}
+
+function thresholdSatisfied(threshold, subtotal) {
+  if (threshold === null || threshold === undefined) return true;
+  if (threshold === 0) return false;
+  return subtotal >= threshold;
 }
 
 function isAutoGiftLine(line) {
