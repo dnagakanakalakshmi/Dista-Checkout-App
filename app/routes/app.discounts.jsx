@@ -8,6 +8,7 @@ import {
   fetchLiveMasters,
   fetchLiveCodesForBatch,
   deleteBatch,
+  setBatchStatus,
   generateCSVFromLiveDiscounts,
 } from "../models/bulkBatch.server";
 import {
@@ -48,6 +49,61 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent")?.toString();
+
+
+if (intent === "setBatchStatus") {
+  const batchId = formData.get("batchId")?.toString().trim();
+  const statusAction = formData.get("statusAction")?.toString().trim(); // "activate" | "deactivate"
+  const status = await setBatchStatus(admin, batchId, statusAction);
+  return { intent: "setBatchStatus", batchId, statusAction, status };
+}
+
+if (intent === "setCouponStatus") {
+  const discountId = formData.get("discountId")?.toString().trim();
+  const statusAction = formData.get("statusAction")?.toString().trim(); // "activate" | "deactivate"
+
+  const mutation =
+    statusAction === "activate"
+      ? `#graphql
+        mutation ActivateCouponStatus($id: ID!) {
+          discountCodeActivate(id: $id) {
+            codeDiscountNode {
+              id
+              codeDiscount {
+                ... on DiscountCodeApp { status }
+              }
+            }
+            userErrors { field message }
+          }
+        }`
+      : `#graphql
+        mutation DeactivateCouponStatus($id: ID!) {
+          discountCodeDeactivate(id: $id) {
+            codeDiscountNode {
+              id
+              codeDiscount {
+                ... on DiscountCodeApp { status }
+              }
+            }
+            userErrors { field message }
+          }
+        }`;
+
+  const response = await admin.graphql(mutation, { variables: { id: discountId } });
+
+  const json = await response.json();
+  const payload = statusAction === "activate" ? json.data?.discountCodeActivate : json.data?.discountCodeDeactivate;
+  if (payload.userErrors.length) {
+    return { errors: payload.userErrors.map((e) => e.message) };
+  }
+
+  return {
+    intent: "setCouponStatus",
+    discountId,
+    statusAction,
+    status: payload.codeDiscountNode?.codeDiscount?.status || null,
+  };
+}
 
   if (intent === "deleteCoupon") {
     const discountId = formData.get("discountId")?.toString().trim();
@@ -183,6 +239,7 @@ export default function Dashboard() {
   const [couponSort, setCouponSort] = useState({ col: null, dir: "asc" });
   const [selectedCoupons, setSelectedCoupons] = useState(new Set());
   const [deletingCouponId, setDeletingCouponId] = useState(null);
+  const [statusPendingCouponId, setStatusPendingCouponId] = useState(null);
 
   // ── Batch table state ─────────────────────────────────────────────────────
   const [batchSearch, setBatchSearch] = useState("");
@@ -312,6 +369,15 @@ export default function Dashboard() {
     fetcher.submit(fd, { method: "post" });
   };
 
+  const handleToggleCouponStatus = (discountId, statusAction) => {
+    setStatusPendingCouponId(discountId);
+    const fd = new FormData();
+    fd.append("intent", "setCouponStatus");
+    fd.append("discountId", discountId);
+    fd.append("statusAction", statusAction);
+    fetcher.submit(fd, { method: "post" });
+  };
+
   const requestBulkDeleteCoupons = () => {
     setBulkCouponDeletePending(true);
     document.getElementById("bulk-delete-coupons-modal")?.showOverlay();
@@ -345,6 +411,17 @@ export default function Dashboard() {
     fetcher.submit(fd, { method: "post" });
   };
 
+  const handleToggleBatchStatus = (batchId, statusAction) => {
+    setPendingBatchId(batchId);
+    setPendingAction(statusAction); // "activate" | "deactivate"
+    const fd = new FormData();
+    fd.append("intent", "setBatchStatus");
+    fd.append("batchId", batchId);
+    fd.append("statusAction", statusAction);
+    fetcher.submit(fd, { method: "post" });
+  };
+
+
   const requestDeleteBatch = (batchId, name) => {
     setBatchToDelete({ batchId, name });
     document.getElementById("delete-batch-modal")?.showOverlay();
@@ -369,6 +446,15 @@ export default function Dashboard() {
       document.getElementById("delete-coupon-modal")?.hideOverlay();
     }
   }, [fetcher.data?.deletedCoupon, shopify]);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.intent === "setCouponStatus") {
+      shopify.toast.show(
+        fetcher.data.statusAction === "activate" ? "Coupon activated" : "Coupon deactivated",
+      );
+      setStatusPendingCouponId(null);
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.intent === "bulkDeleteCoupons") {
@@ -408,6 +494,16 @@ export default function Dashboard() {
       setPendingBatchId(null);
       setBatchToDelete(null);
       document.getElementById("delete-batch-modal")?.hideOverlay();
+    }
+  }, [fetcher.state, fetcher.data, shopify]);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.intent === "setBatchStatus") {
+      shopify.toast.show(
+        fetcher.data.statusAction === "activate" ? "Batch activated" : "Batch deactivated",
+      );
+      setPendingAction(null);
+      setPendingBatchId(null);
     }
   }, [fetcher.state, fetcher.data, shopify]);
 
@@ -610,6 +706,16 @@ export default function Dashboard() {
                             >
                               Delete
                             </s-button>
+                            <s-button
+                              variant="secondary"
+                              disabled={isBusy && !(pendingBatchId === batch.batchId && (pendingAction === "activate" || pendingAction === "deactivate"))}
+                              {...(pendingBatchId === batch.batchId && (pendingAction === "activate" || pendingAction === "deactivate") ? { loading: true } : {})}
+                              onClick={() =>
+                                handleToggleBatchStatus(batch.batchId, batch.status === "ACTIVE" ? "deactivate" : "activate")
+                              }
+                            >
+                              {batch.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                            </s-button>
                           </s-stack>
                         </s-table-cell>
                       </s-table-row>
@@ -784,6 +890,16 @@ export default function Dashboard() {
                             onClick={() => requestDeleteCoupon(coupon)}
                           >
                             Delete
+                          </s-button>
+                          <s-button
+                            variant="secondary"
+                            disabled={statusPendingCouponId === coupon.id}
+                            {...(statusPendingCouponId === coupon.id ? { loading: true } : {})}
+                            onClick={() =>
+                              handleToggleCouponStatus(coupon.id, coupon.status === "ACTIVE" ? "deactivate" : "activate")
+                            }
+                          >
+                            {coupon.status === "ACTIVE" ? "Deactivate" : "Activate"}
                           </s-button>
                         </s-stack>
                       </s-table-cell>

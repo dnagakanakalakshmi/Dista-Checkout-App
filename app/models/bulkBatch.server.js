@@ -110,6 +110,65 @@ const CODES_PAGE_SIZE = 250;
  * should use this return value, not a separate getBatchRegistry() call,
  * to avoid acting on stale pre-reconciliation data.
  */
+
+/**
+ * Activates or deactivates a batch's master discount. This flips the
+ * discount off/on entirely (independent of its start/end dates) — every
+ * redeem code under the master inherits this, since they don't carry
+ * independent state.
+ *
+ * Unlike delete, this does NOT touch the batch record — masterDiscountId
+ * stays the same, so re-activating just flips the switch back.
+ */
+export async function setBatchStatus(admin, batchId, action) {
+  const batch = await getBatchRecord(admin, batchId);
+  if (!batch) {
+    throw new Response("Batch not found.", { status: 404 });
+  }
+
+  const mutation =
+    action === "activate"
+      ? `#graphql
+        mutation ActivateBulkBatchMaster($id: ID!) {
+          discountCodeActivate(id: $id) {
+            codeDiscountNode {
+              id
+              codeDiscount {
+                ... on DiscountCodeApp { status }
+              }
+            }
+            userErrors { field message }
+          }
+        }`
+      : `#graphql
+        mutation DeactivateBulkBatchMaster($id: ID!) {
+          discountCodeDeactivate(id: $id) {
+            codeDiscountNode {
+              id
+              codeDiscount {
+                ... on DiscountCodeApp { status }
+              }
+            }
+            userErrors { field message }
+          }
+        }`;
+
+  const response = await admin.graphql(mutation, { variables: { id: batch.masterDiscountId } });
+
+  const json = await response.json();
+  const payload = action === "activate" ? json.data?.discountCodeActivate : json.data?.discountCodeDeactivate;
+  const userErrors = payload?.userErrors || [];
+
+  if (userErrors.length) {
+    throw new Response(
+      `Failed to ${action} batch: ${userErrors.map((e) => e.message).join("; ")}`,
+      { status: 500 },
+    );
+  }
+
+  return payload?.codeDiscountNode?.codeDiscount?.status || null;
+}
+
 export async function reconcileBatchRegistry(admin) {
   const { shopId, batches } = await getBatchRegistry(admin);
 
@@ -123,7 +182,8 @@ export async function reconcileBatchRegistry(admin) {
   );
 
   let changed = false;
-  const reconciled = [];
+  const persisted = [];
+  const withStatus = [];
 
   batches.forEach((batch, index) => {
     const live = liveMasters[index];
@@ -135,14 +195,17 @@ export async function reconcileBatchRegistry(admin) {
       return;
     }
 
-    reconciled.push(batch);
+    persisted.push(batch);
+    // `status` is attached to the returned copy only — it's live/volatile
+    // like `count`, so it never gets written back into the metafield.
+    withStatus.push({ ...batch, status: live.status });
   });
 
   if (changed) {
-    await writeBatchRegistry(admin, shopId, reconciled);
+    await writeBatchRegistry(admin, shopId, persisted);
   }
 
-  return reconciled;
+  return withStatus;
 }
 
 /**

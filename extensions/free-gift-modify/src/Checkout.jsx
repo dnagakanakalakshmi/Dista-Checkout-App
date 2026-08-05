@@ -96,16 +96,26 @@ function FreeGift() {
 
       const existingGiftIds = new Set(autoGiftLines.map((line) => line.merchandise?.id));
       for (const variantId of desiredGiftIds) {
-        if (!existingGiftIds.has(variantId)) {
-          await shopify.applyCartLinesChange({
-            type: 'addCartLine',
-            merchandiseId: variantId,
-            quantity: 1,
-            attributes: [
-              { key: AUTO_GIFT_KEY, value: AUTO_GIFT_VALUE },
-              { key: 'Free gift', value: 'Yes' },
-            ],
-          });
+        if (existingGiftIds.has(variantId)) continue;
+
+        const result = await shopify.applyCartLinesChange({
+          type: 'addCartLine',
+          merchandiseId: variantId,
+          quantity: 1,
+          attributes: [
+            { key: AUTO_GIFT_KEY, value: AUTO_GIFT_VALUE },
+            { key: 'Free gift', value: 'Yes' },
+          ],
+        });
+
+        console.log('Free gift add result:', variantId, result);
+
+        const addSucceeded =
+          result &&
+          result.type !== 'error' &&
+          !result.errors?.length;
+
+        if (addSucceeded) {
           added = true;
         }
       }

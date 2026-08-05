@@ -80,7 +80,7 @@ export default function FreeGiftCampaignForm() {
 
   const pickGiftProducts = async () => {
     const selection = await shopify.resourcePicker({
-      type: "product",
+      type: "variant",
       multiple: false,
       selectionIds: campaign.giftProducts?.map((product) => ({ id: product.id })) || [],
     });

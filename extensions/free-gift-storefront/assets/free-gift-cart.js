@@ -212,11 +212,16 @@
         }
       }
 
-      const existingVariantIds = new Set(currentGiftItems.map((i) => String(i.variant_id)));
+      const existingVariantIds = new Set(
+        currentGiftItems.map((i) => String(i.variant_id))
+      );
+
       const addedTitles = [];
+
       for (const g of eligible) {
         if (existingVariantIds.has(g.variantId)) continue;
-        await internalFetch("/cart/add.js", {
+
+        const response = await internalFetch("/cart/add.js", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -233,6 +238,16 @@
             ],
           }),
         });
+
+        // Only consider the gift added if Shopify actually accepted it.
+        if (!response.ok) {
+          console.log(
+            `Free gift ${g.variantId} could not be added. Status:`,
+            response.status
+          );
+          continue;
+        }
+
         addedTitles.push(g.variantId);
         changed = true;
       }
