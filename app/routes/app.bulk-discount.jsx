@@ -14,7 +14,7 @@ import { graphqlRaw } from "../models/shopifyRawGraphql.server";
 
 const CONFIG_NAMESPACE = "$app";
 const CONFIG_KEY = "config";
-const MAX_COUPONS = 4000000;
+const MAX_COUPONS = 3000;
 
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
