@@ -80,23 +80,19 @@ export default function FreeGiftCampaignForm() {
 
   const pickGiftProducts = async () => {
     const selection = await shopify.resourcePicker({
-      type: "variant",
+      type: "product",
       multiple: false,
-      selectionIds: campaign.giftProducts?.map((product) => ({ id: product.variantId })) || [],
+      selectionIds: campaign.giftProducts?.map((product) => ({ id: product.id })) || [],
     });
     if (!selection) return;
 
     const giftProducts = selection
-      .filter((variant) => variant?.id)
-      .map((variant) => ({
-        id: variant.product?.id || variant.id,
-        title: variant.product?.title
-          ? `${variant.product.title}${
-              variant.title && variant.title !== "Default Title" ? ` – ${variant.title}` : ""
-            }`
-          : variant.title || "Gift product",
-        variantId: variant.id,
-      }));
+      .map((product) => ({
+        id: product.id,
+        title: product.title || product.handle || "Gift product",
+        variantId: product.variants?.[0]?.id || "",
+      }))
+      .filter((product) => product.variantId);
 
     update({ giftProducts, giftVariantIds: giftProducts.map((p) => p.variantId) });
   };
