@@ -73,6 +73,7 @@ function normalizeCampaigns(config) {
     .filter((campaign) => campaign?.enabled)
     .map((campaign) => ({
       subtotalThreshold: normalizeThreshold(campaign.subtotalThreshold),
+      subtotalMax: normalizeThreshold(campaign.subtotalMax),
       logic: campaign.logic === 'AND' ? 'AND' : 'OR',
       giftVariantIds: uniqueStrings(campaign.giftVariantIds),
       conditions: {
@@ -109,24 +110,33 @@ function isLineEligible(conditions, line) {
 
 function campaignQualifies(campaign, lines, subtotal) {
   const conditions = campaign.conditions;
-  const hasConditions = conditions.productTypes.length || conditions.collectionIds.length || conditions.tags.length;
+  const min = campaign.subtotalThreshold;
+  const max = campaign.subtotalMax;
 
-  if (!hasConditions) {
-    return thresholdSatisfied(campaign.subtotalThreshold, subtotal);
+  const results = [];
+
+  const hasRange = (min !== null && min !== undefined) || (max !== null && max !== undefined);
+  if (hasRange) {
+    results.push(rangeSatisfied(min, max, subtotal));
   }
 
-  const eligibleLines = lines.filter((line) => isLineEligible(conditions, line));
-
-  if (campaign.logic === "AND") {
-    if (!eligibleLines.length) return false;
-    const eligibleSubtotal = eligibleLines.reduce(
-      (sum, line) => sum + Number(line.cost?.totalAmount?.amount || 0),
-      0,
-    );
-    return thresholdSatisfied(campaign.subtotalThreshold, eligibleSubtotal);
+  const hasProductConditions =
+    conditions.productTypes.length || conditions.collectionIds.length || conditions.tags.length;
+  if (hasProductConditions) {
+    const eligibleLines = lines.filter((line) => isLineEligible(conditions, line));
+    results.push(eligibleLines.length > 0);
   }
 
-  return thresholdSatisfied(campaign.subtotalThreshold, subtotal) || eligibleLines.length > 0;
+  if (!results.length) return true;
+
+  return campaign.logic === "AND" ? results.every(Boolean) : results.some(Boolean);
+}
+
+function rangeSatisfied(min, max, subtotal) {
+  if (min === 0) return false;
+  if (min !== null && min !== undefined && subtotal < min) return false;
+  if (max !== null && max !== undefined && subtotal >= max) return false;
+  return true;
 }
 
 function thresholdSatisfied(threshold, subtotal) {

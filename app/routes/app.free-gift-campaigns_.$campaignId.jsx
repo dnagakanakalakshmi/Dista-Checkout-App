@@ -116,6 +116,10 @@ export default function FreeGiftCampaignForm() {
         campaign.subtotalThreshold === "" || campaign.subtotalThreshold === null || campaign.subtotalThreshold === undefined
           ? null
           : Number(campaign.subtotalThreshold),
+      subtotalMax:
+        campaign.subtotalMax === "" || campaign.subtotalMax === null || campaign.subtotalMax === undefined
+          ? null
+          : Number(campaign.subtotalMax),
       giftVariantIds: campaign.giftProducts?.map((p) => p.variantId).filter(Boolean) || campaign.giftVariantIds || [],
       conditions: {
         ...campaign.conditions,
@@ -163,15 +167,30 @@ export default function FreeGiftCampaignForm() {
             onChange={(event) => update({ title: event.target.value })}
           />
 
-          <s-number-field
-            label="Subtotal threshold"
-            min={0}
-            max={100000}
-            step={1}
-            value={campaign.subtotalThreshold ?? ""}
-            placeholder="Leave blank for no subtotal requirement. Entering 0 will prevent this campaign from ever qualifying."
-            onChange={(event) => update({ subtotalThreshold: event.target.value })}
-          />
+          <s-stack direction="inline" gap="base">
+            <s-box inlineSize="50%">
+              <s-number-field
+                label="Subtotal min (≥)"
+                min={0}
+                max={100000}
+                step={1}
+                value={campaign.subtotalThreshold ?? ""}
+                placeholder="Leave blank for no minimum. Entering 0 will prevent this campaign from ever qualifying."
+                onChange={(event) => update({ subtotalThreshold: event.target.value })}
+              />
+            </s-box>
+            <s-box inlineSize="50%">
+              <s-number-field
+                label="Subtotal max (<)"
+                min={0}
+                max={100000}
+                step={1}
+                value={campaign.subtotalMax ?? ""}
+                placeholder="Leave blank for no upper bound."
+                onChange={(event) => update({ subtotalMax: event.target.value })}
+              />
+            </s-box>
+          </s-stack>
 
           <s-select
             label="Condition logic"

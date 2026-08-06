@@ -303,6 +303,7 @@ export function normalizeCampaign(campaign) {
     title: String(campaign.title || "Free Gift Campaign").trim(),
     enabled: Boolean(campaign.enabled),
     subtotalThreshold: normalizeThreshold(campaign.subtotalThreshold),
+    subtotalMax: normalizeThreshold(campaign.subtotalMax),
     logic: campaign.logic === "AND" ? "AND" : "OR",
     giftVariantIds: uniqueStrings(campaign.giftVariantIds),
     giftProducts: Array.isArray(campaign.giftProducts) ? campaign.giftProducts : [],
@@ -342,24 +343,42 @@ function isLineEligible(conditions, facts) {
 }
 
 export function campaignQualifies(campaign, lines, productFacts, subtotal) {
-  const threshold = campaign.subtotalThreshold; // null | number
   const conditions = campaign.conditions || {};
-  const hasConditions = conditions.productTypes?.length || conditions.collectionIds?.length || conditions.tags?.length;
+  const min = campaign.subtotalThreshold; // null | number
+  const max = campaign.subtotalMax; // null | number
 
-  if (!hasConditions) {
-    return thresholdSatisfied(threshold, subtotal);
+  const results = [];
+
+  // Condition 1: subtotal range — only counts if merchant set min and/or max
+  const hasRange = (min !== null && min !== undefined) || (max !== null && max !== undefined);
+  if (hasRange) {
+    results.push(rangeSatisfied(min, max, subtotal));
   }
 
-  const eligibleLines = lines.filter((line) => isLineEligible(conditions, productFacts[line.merchandiseId]));
-
-  if (campaign.logic === "AND") {
-    if (!eligibleLines.length) return false;
-    const eligibleSubtotal = eligibleLines.reduce((sum, line) => sum + Number(line.lineSubtotal || 0), 0);
-    return thresholdSatisfied(threshold, eligibleSubtotal);
+  // Condition 2: product type / collection / tag — only counts if any are configured.
+  // A line matches if it satisfies ANY configured product/collection/tag (unchanged
+  // from before — that inner OR across type/collection/tag is untouched).
+  const hasProductConditions =
+    conditions.productTypes?.length || conditions.collectionIds?.length || conditions.tags?.length;
+  if (hasProductConditions) {
+    const eligibleLines = lines.filter((line) => isLineEligible(conditions, productFacts[line.merchandiseId]));
+    results.push(eligibleLines.length > 0);
   }
 
-  // OR
-  return thresholdSatisfied(threshold, subtotal) || eligibleLines.length > 0;
+  // No conditions configured at all -> unconditional gift (unchanged behavior)
+  if (!results.length) return true;
+
+  return campaign.logic === "AND" ? results.every(Boolean) : results.some(Boolean);
+}
+
+// min: null = no lower bound; 0 = explicitly typed 0, treated as impossible;
+// >0 = subtotal must be >= min.
+// max: null = no upper bound; otherwise subtotal must be strictly < max.
+function rangeSatisfied(min, max, subtotal) {
+  if (min === 0) return false;
+  if (min !== null && min !== undefined && subtotal < min) return false;
+  if (max !== null && max !== undefined && subtotal >= max) return false;
+  return true;
 }
 
 // null = merchant never set a threshold => no subtotal restriction, always satisfied.
