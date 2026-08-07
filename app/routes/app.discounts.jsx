@@ -855,6 +855,8 @@ export default function Dashboard() {
                           ? `${coupon.discountValue}%`
                           : coupon.discountType === "free_shipping"
                           ? "Free Shipping"
+                          : coupon.discountType === "shipping_percentage"
+                          ? `${coupon.discountValue}% off shipping`
                           : `$${coupon.discountValue}`}
                       </s-table-cell>
                       <s-table-cell>
@@ -1102,6 +1104,7 @@ function formatBatchValue(template) {
   if (template.discountType === "free_shipping") return "Free Shipping";
   if (template.discountType === "percentage") return `${template.discountValue}%`;
   if (template.discountType === "fixed") return `$${template.discountValue}`;
+  if (template.discountType === "shipping_percentage") return `${template.discountValue}% off shipping`;
   return "—";
 }
 
