@@ -18,27 +18,29 @@ export function cartDeliveryOptionsDiscountsGenerateRun(input) {
   }
 
   const configurations = normalizeConfigurations(input.discount.metafield?.jsonValue);
-  const freeShippingConfig = configurations.find(
-    (configuration) => configuration.discountType === 'free_shipping',
+  const shippingConfig = configurations.find(
+    (configuration) =>
+      configuration.discountType === 'free_shipping' ||
+      configuration.discountType === 'shipping_percentage',
   );
 
-  if (!freeShippingConfig) {
+  if (!shippingConfig || shippingConfig.discountValue <= 0) {
     return {operations: []};
   }
 
   const cartAttributeValue = input.cart.attribute?.value ?? null;
-  if (!meetsCartAttributeCondition(freeShippingConfig, cartAttributeValue)) {
+  if (!meetsCartAttributeCondition(shippingConfig, cartAttributeValue)) {
     return {operations: []};
   }
 
   const lines = annotateLines(input.cart.lines);
-  const qualifyingLines = selectQualifyingLines(freeShippingConfig, lines);
+  const qualifyingLines = selectQualifyingLines(shippingConfig, lines);
 
   if (!qualifyingLines.length) {
     return {operations: []};
   }
 
-  if (!meetsMinimumRequirement(freeShippingConfig, qualifyingLines)) {
+  if (!meetsMinimumRequirement(shippingConfig, qualifyingLines)) {
     return {operations: []};
   }
 
@@ -48,18 +50,14 @@ export function cartDeliveryOptionsDiscountsGenerateRun(input) {
         deliveryDiscountsAdd: {
           selectionStrategy: DeliveryDiscountSelectionStrategy.All,
           candidates: input.cart.deliveryGroups.map((group) => ({
-            message: freeShippingConfig.title || 'Free shipping',
-            targets: [
-              {
-                deliveryGroup: {
-                  id: group.id,
-                },
-              },
-            ],
+            message:
+              shippingConfig.title ||
+              (shippingConfig.discountType === 'free_shipping'
+                ? 'Free shipping'
+                : `${shippingConfig.discountValue}% off shipping`),
+            targets: [{ deliveryGroup: { id: group.id } }],
             value: {
-              percentage: {
-                value: 100,
-              },
+              percentage: { value: shippingConfig.discountValue },
             },
           })),
         },
@@ -168,15 +166,25 @@ function normalizeConfigurations(rawConfiguration) {
     ? rawConfiguration.discounts
     : [rawConfiguration];
 
+  // normalizeConfigurations — add discountValue extraction
   return rawDiscounts
     .filter((discount) => discount && typeof discount === 'object')
     .map((discount) => ({
       discountType: discount.discountType,
+      discountValue: normalizeShippingDiscountValue(discount.discountType, discount.discountValue),
       title: typeof discount.title === 'string' ? discount.title.trim() : '',
       appliesTo: normalizeAppliesTo(discount.appliesTo),
       minimumRequirement: normalizeMinimumRequirement(discount.minimumRequirement),
       cartAttribute: normalizeCartAttribute(discount.cartAttribute),
     }));
+
+  // new helper
+  function normalizeShippingDiscountValue(discountType, rawValue) {
+    if (discountType === 'free_shipping') return 100;
+    const value = parseMoney(rawValue);
+    if (value <= 0 || value > 100) return 0;
+    return value;
+  }
 }
 
 function normalizeAppliesTo(rawAppliesTo) {

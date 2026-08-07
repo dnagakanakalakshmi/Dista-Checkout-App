@@ -402,9 +402,9 @@ function formatRecurringCycleLimitForCSV(coupon) {
 
 // Add this helper near the other small helpers (e.g. near generateBatchId):
 function getDiscountClasses(discountType) {
-  // free_shipping is a SHIPPING-class discount; percentage/fixed are
-  // ORDER-class. Mutually exclusive in this app's model.
-  return discountType === "free_shipping" ? ["SHIPPING"] : ["ORDER"];
+  return discountType === "free_shipping" || discountType === "shipping_percentage"
+    ? ["SHIPPING"]
+    : ["ORDER"];
 }
 
 function buildCodeAppDiscountInput({ discount, functionId, config, isUpdate = false, previousCustomerEligibility = null, }) {
@@ -717,12 +717,19 @@ export default function BulkDiscount() {
                       label="Discount type"
                       name="discountType"
                       value={formData.discountType}
-                      onChange={(e) => updateFormData("discountType", e.target.value)}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        updateFormData("discountType", newType);
+                        if (newType === "shipping_percentage" && formData.purchaseType !== "one_time") {
+                          updateFormData("purchaseType", "one_time");
+                        }
+                      }}
                       required
                     >
                       <s-option value="percentage">Percentage off</s-option>
                       <s-option value="fixed">Flat amount off</s-option>
                       <s-option value="free_shipping">Free shipping</s-option>
+                      <s-option value="shipping_percentage">Percentage off shipping</s-option>
                     </s-select>
                   </s-box>
                   {formData.discountType !== "free_shipping" && (
@@ -732,6 +739,7 @@ export default function BulkDiscount() {
                         name="discountValue"
                         min={0.01}
                         step={0.01}
+                        max={formData.discountType === "shipping_percentage" ? 100 : undefined}
                         placeholder="10"
                         value={formData.discountValue}
                         onChange={(e) => updateFormData("discountValue", e.target.value)}
@@ -777,8 +785,12 @@ export default function BulkDiscount() {
                       onChange={(e) => updateFormData("purchaseType", e.target.value)}
                     >
                       <s-option value="one_time">One-time purchase</s-option>
-                      <s-option value="subscription">Subscription</s-option>
-                      <s-option value="both">Both</s-option>
+                      {formData.discountType !== "shipping_percentage" && (
+                        <>
+                          <s-option value="subscription">Subscription</s-option>
+                          <s-option value="both">Both</s-option>
+                        </>
+                      )}
                     </s-select>
                   </s-box>
                 </s-stack>
@@ -1094,7 +1106,7 @@ export default function BulkDiscount() {
                     })
                   }
                 />
-                {formData.discountType !== "free_shipping" && (
+                {formData.discountType !== "free_shipping" && formData.discountType !== "shipping_percentage" && (
                   <s-checkbox
                     label="Combines with shipping discounts"
                     name="combinesWithShipping"
@@ -1204,28 +1216,32 @@ function findDefaultFunction(functions) {
 function parseBulkDiscountConfig(formData) {
   const discountType = formData.get("discountType")?.toString().trim() || "percentage";
   const isFreeShipping = discountType === "free_shipping";
+  const isShippingPercentage = discountType === "shipping_percentage";
 
-  const discountValue = isFreeShipping ? 0 : Number(formData.get("discountValue"));
-  const maxDiscountAmount = isFreeShipping ? null : Number(formData.get("maxDiscountAmount"));
+  const discountValue = isFreeShipping ? 100 : Number(formData.get("discountValue"));
+  const maxDiscountAmount = discountType === "percentage" ? Number(formData.get("maxDiscountAmount")) : null;
   const usageLimit = normalizeUsageLimit(formData.get("usageLimit"));
   const startsAt = normalizeStartDateTime(formData.get("startsAtDate"), formData.get("startsAtTime"));
   const endsAt = normalizeEndDateTime(formData.get("endsAt"), formData.get("endsAtTime"));
 
-  if (!["percentage", "fixed", "free_shipping"].includes(discountType)) {
-    throw new Response("Choose percentage, fixed, or free shipping.", { status: 400 });
+  if (!["percentage", "fixed", "free_shipping", "shipping_percentage"].includes(discountType)) {
+    throw new Response("Choose percentage, fixed, free shipping, or percentage off shipping.", { status: 400 });
   }
 
   if (!isFreeShipping) {
     if (!Number.isFinite(discountValue) || discountValue <= 0) {
       throw new Response("Discount value must be greater than 0.", { status: 400 });
     }
-    if (discountType === "percentage" && discountValue > 100) {
+    if ((discountType === "percentage" || isShippingPercentage) && discountValue > 100) {
       throw new Response("Percentage cannot be more than 100%.", { status: 400 });
     }
-    if (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount <= 0) {
-      throw new Response("Maximum discount amount must be greater than 0.", { status: 400 });
-    }
   }
+
+if (discountType === "percentage") {
+  if (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount <= 0) {
+    throw new Response("Maximum discount amount must be greater than 0.", { status: 400 });
+  }
+}
 
   const appliesTo = normalizeAppliesTo(
     formData.get("appliesToMode"),
@@ -1242,6 +1258,11 @@ function parseBulkDiscountConfig(formData) {
     formData.get("customerIds"),
   );
   const purchaseType = normalizePurchaseType(formData.get("purchaseType"));
+
+  if (isShippingPercentage && purchaseType.subscription) {
+    throw new Response("Percentage off shipping isn't supported for subscriptions yet.", { status: 400 });
+  }
+
   const recurringCycleLimit = normalizeRecurringCycleLimit(
     purchaseType,
     formData.get("recurringPaymentLimitMode"),

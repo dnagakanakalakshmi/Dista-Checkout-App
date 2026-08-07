@@ -326,14 +326,14 @@ export const action = async ({ request }) => {
 };
 
 function buildCodeAppDiscountInput({ discount, functionId, config }) {
-  const isFreeShipping = discount.discountType === "free_shipping";
+  const isShipping = discount.discountType === "free_shipping" || discount.discountType === "shipping_percentage";
   return {
     code: discount.code,
     title: discount.title,
     functionId,
 
     // Native fields — supported directly by DiscountCodeAppInput.
-    discountClasses: isFreeShipping ? ["SHIPPING"] : ["ORDER"],
+    discountClasses: isShipping ? ["SHIPPING"] : ["ORDER"],
     appliesOncePerCustomer: discount.appliesOncePerCustomer,
     combinesWith: {
       orderDiscounts: discount.combinesWith.orderDiscounts,
@@ -675,14 +675,20 @@ export default function Index() {
                           label="Discount type"
                           name={`discounts[${index}][discountType]`}
                           value={row.discountType}
-                          onChange={(e) =>
-                            updateDiscountRow(row.id, { discountType: e.target.value })
-                          }
+                          onChange={(e) => {
+                            const newType = e.target.value;
+                            const patch = { discountType: newType };
+                            if (newType === "shipping_percentage" && row.purchaseType !== "one_time") {
+                              patch.purchaseType = "one_time";
+                            }
+                            updateDiscountRow(row.id, patch);
+                          }}
                           required
                         >
                           <s-option value="percentage">Percentage off</s-option>
                           <s-option value="fixed">Flat amount off</s-option>
                           <s-option value="free_shipping">Free shipping</s-option>
+                          <s-option value="shipping_percentage">Percentage off shipping</s-option>
                         </s-select>
                       </s-box>
                       {row.discountType !== "free_shipping" && (
@@ -691,6 +697,7 @@ export default function Index() {
                             label="Discount value"
                             name={`discounts[${index}][discountValue]`}
                             min={0.01}
+                            max={row.discountType === "shipping_percentage" ? 100 : undefined}
                             step={0.01}
                             placeholder="10"
                             value={row.discountValue}
@@ -741,13 +748,15 @@ export default function Index() {
                           label="Purchase type"
                           name={`discounts[${index}][purchaseType]`}
                           value={row.purchaseType}
-                          onChange={(e) =>
-                            updateDiscountRow(row.id, { purchaseType: e.target.value })
-                          }
+                          onChange={(e) => updateDiscountRow(row.id, { purchaseType: e.target.value })}
                         >
-                          <s-option value="both">One-time purchases and subscriptions</s-option>
                           <s-option value="one_time">One-time purchases only</s-option>
-                          <s-option value="subscription">Subscriptions only</s-option>
+                          {row.discountType !== "shipping_percentage" && (
+                            <>
+                              <s-option value="subscription">Subscriptions only</s-option>
+                              <s-option value="both">One-time purchases and subscriptions</s-option>
+                            </>
+                          )}
                         </s-select>
                       </s-box>
                     </s-stack>
@@ -1128,7 +1137,7 @@ export default function Index() {
                         })
                       }
                     />
-                    {row.discountType !== "free_shipping" && (
+                    {row.discountType !== "free_shipping" && row.discountType !== "shipping_percentage" && (
                       <s-checkbox
                         label="Combines with shipping discounts"
                         name={`discounts[${index}][combinesWithShipping]`}
@@ -1314,6 +1323,7 @@ function normalizeDiscount(rawDiscount, label) {
   const code = rawDiscount.code?.toString().trim().toUpperCase();
   const discountType = rawDiscount.discountType?.toString().trim();
   const isFreeShipping = discountType === "free_shipping";
+  const isShippingPercentage = discountType === "shipping_percentage";
 
   const discountValue = isFreeShipping ? 0 : Number(rawDiscount.discountValue);
 
@@ -1333,8 +1343,8 @@ function normalizeDiscount(rawDiscount, label) {
     throw new Response(`${label}: code is required.`, { status: 400 });
   }
 
-  if (!["percentage", "fixed", "free_shipping"].includes(discountType)) {
-    throw new Response(`${label}: choose percentage, fixed, or free shipping.`, {
+  if (!["percentage", "fixed", "free_shipping", "shipping_percentage"].includes(discountType)) {
+    throw new Response(`${label}: choose percentage, fixed, free shipping, or percentage off shipping.`, {
       status: 400,
     });
   }
@@ -1351,11 +1361,11 @@ function normalizeDiscount(rawDiscount, label) {
       });
     }
 
-    if (discountType === "percentage" && discountValue > 100) {
-      throw new Response(`${label}: percentage cannot be more than 100%.`, {
-        status: 400,
-      });
+  if (discountType === "percentage" || isShippingPercentage) {
+    if (discountValue > 100) {
+      throw new Response(`${label}: percentage cannot be more than 100%.`, { status: 400 });
     }
+  }
 
     if (maxDiscountAmount !== null && (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount <= 0)) {
       throw new Response(`${label}: maxDiscountAmount must be greater than 0.`, {
@@ -1378,6 +1388,13 @@ function normalizeDiscount(rawDiscount, label) {
     label,
   );
   const purchaseType = normalizePurchaseType(rawDiscount.purchaseType, label);
+
+  if (isShippingPercentage && purchaseType.subscription) {
+    throw new Response(`${label}: percentage off shipping isn't supported for subscriptions yet.`, {
+      status: 400,
+    });
+  }
+
   const recurringCycleLimit = normalizeRecurringCycleLimit(
     purchaseType,
     rawDiscount.recurringPaymentLimitMode,
