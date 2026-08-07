@@ -63,6 +63,22 @@ export const action = async ({ request }) => {
   }
 };
 
+function formatSubtotalRange(campaign) {
+  const hasMin =
+    campaign.subtotalThreshold !== null &&
+    campaign.subtotalThreshold !== undefined &&
+    campaign.subtotalThreshold !== "";
+  const hasMax =
+    campaign.subtotalMax !== null &&
+    campaign.subtotalMax !== undefined &&
+    campaign.subtotalMax !== "";
+
+  if (!hasMin && !hasMax) return "No minimum";
+  if (hasMin && hasMax) return `$${campaign.subtotalThreshold} – $${campaign.subtotalMax}`;
+  if (hasMin) return `$${campaign.subtotalThreshold}+`;
+  return `Up to $${campaign.subtotalMax}`;
+}
+
 export default function FreeGiftCampaigns() {
   const { config, discountId } = useLoaderData();
   const [campaigns, setCampaigns] = useState(config.campaigns || []);
@@ -139,7 +155,7 @@ export default function FreeGiftCampaigns() {
                 <s-table-header-row>
                   <s-table-header listSlot="primary">Title</s-table-header>
                   <s-table-header listSlot="inline">Status</s-table-header>
-                  <s-table-header listSlot="labeled" format="numeric">Threshold</s-table-header>
+                  <s-table-header listSlot="labeled">Subtotal range</s-table-header>
                   <s-table-header listSlot="labeled" format="numeric">Gifts</s-table-header>
                   <s-table-header listSlot="secondary">Actions</s-table-header>
                 </s-table-header-row>
@@ -152,7 +168,7 @@ export default function FreeGiftCampaigns() {
                           {campaign.enabled ? "Enabled" : "Disabled"}
                         </s-badge>
                       </s-table-cell>
-                      <s-table-cell>{campaign.subtotalThreshold}</s-table-cell>
+                      <s-table-cell>{formatSubtotalRange(campaign)}</s-table-cell>f
                       <s-table-cell>
                         {campaign.giftProducts?.length || campaign.giftVariantIds?.length || 0}
                       </s-table-cell>
