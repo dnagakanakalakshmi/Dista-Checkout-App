@@ -104,7 +104,6 @@ function FreeGift() {
           quantity: 1,
           attributes: [
             { key: AUTO_GIFT_KEY, value: AUTO_GIFT_VALUE },
-            { key: 'Free gift', value: 'Yes' },
           ],
         });
 

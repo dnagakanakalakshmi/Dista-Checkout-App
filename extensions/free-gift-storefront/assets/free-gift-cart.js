@@ -232,7 +232,6 @@
                 properties: {
                   [AUTO_GIFT_KEY]: AUTO_GIFT_VALUE,
                   [CAMPAIGN_KEY]: g.campaignId || "",
-                  "Free gift": "Yes",
                 },
               },
             ],
