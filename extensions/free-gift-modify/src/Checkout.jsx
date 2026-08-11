@@ -40,7 +40,7 @@ function FreeGift() {
 
   useEffect(() => {
     void syncGifts();
-  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain]);
+  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain, shopify.localization.country.value?.isoCode]);
 
   const syncGifts = async () => {
     if (busy.current) {
@@ -64,6 +64,7 @@ function FreeGift() {
         body: JSON.stringify({
           shop: shop.myshopifyDomain,
           subtotal: qualifyingSubtotal,
+          country: shopify.localization.country.value?.isoCode || null,
           lines: currentLines.map((line) => ({
             id: line.id,
             quantity: line.quantity,

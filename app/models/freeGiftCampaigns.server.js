@@ -210,6 +210,38 @@ export async function ensureFreeGiftAutomaticDiscount(admin, existingDiscountId,
   }
 }
 
+async function fetchGiftVariantAvailabilityForCountry(storefront, variantIds, countryCode) {
+  if (!variantIds.length) return {};
+
+  const response = await storefront.graphql(
+    `#graphql
+      query GiftVariantAvailability($ids: [ID!]!, $country: CountryCode!) @inContext(country: $country) {
+        nodes(ids: $ids) {
+          ... on ProductVariant {
+            id
+            availableForSale
+            quantityAvailable
+          }
+        }
+      }`,
+    { variables: { ids: variantIds, country: countryCode } },
+  );
+  const json = await response.json();
+
+  if (json.errors) {
+    console.error("GiftVariantAvailabilityForCountry GraphQL errors:", JSON.stringify(json.errors, null, 2));
+  }
+
+  const availability = {};
+  (json.data?.nodes || []).forEach((node) => {
+    if (!node?.id) return;
+    // Storefront API's availableForSale already accounts for market
+    // publication + inventory policy for this country context.
+    availability[node.id] = Boolean(node.availableForSale);
+  });
+  return availability;
+}
+
 async function fetchGiftVariantAvailability(admin, variantIds) {
   if (!variantIds.length) return {};
 
@@ -247,7 +279,7 @@ function isVariantAvailable(variant) {
   return (variant.inventoryQuantity ?? 0) > 0;
 }
 
-export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines }) {
+export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, country = null, storefront = null }) {
   const { config } = await getFreeGiftConfig(admin);
   const activeCampaigns = config.campaigns.filter((c) => c.enabled);
 
@@ -270,17 +302,12 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
   const productFacts = await fetchCartProductFacts(admin, variantIds);
   const nonGiftLines = normalizedLines.filter((line) => !isAutoGiftLine(line));
 
-  // Always evaluate thresholds in shop base currency — the client-sent
-  // `subtotal` is in the buyer's presentment currency and isn't reliable
-  // for comparison against merchant-configured USD/base-currency thresholds.
   const shopCurrencySubtotal = computeShopCurrencySubtotal(nonGiftLines, productFacts);
 
   const matchedCampaigns = activeCampaigns.filter((campaign) =>
     campaignQualifies(campaign, nonGiftLines, productFacts, shopCurrencySubtotal),
   );
 
-  // variantId -> campaignId, first matching campaign wins if a gift variant
-  // happens to be shared across campaigns
   const seenVariants = new Set();
   const gifts = [];
   for (const campaign of matchedCampaigns) {
@@ -291,7 +318,15 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
     }
   }
 
-  const availability = await fetchGiftVariantAvailability(admin, [...seenVariants]);
+  // Use market-aware Storefront availability when we know the buyer's
+  // country (checkout extension); otherwise fall back to the Admin API
+  // check (theme cart script — good enough for the in-cart preview, since
+  // checkout is the authoritative gate anyway).
+  const availability =
+    country && storefront
+      ? await fetchGiftVariantAvailabilityForCountry(storefront, [...seenVariants], country)
+      : await fetchGiftVariantAvailability(admin, [...seenVariants]);
+
   const inStockGifts = gifts.filter((g) => availability[g.variantId]);
 
   return {

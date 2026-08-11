@@ -39,7 +39,7 @@ export const action = async ({ request }) => {
     return json({ ok: false, giftVariantIds: [], error: "Invalid JSON body" }, { status: 400, headers: corsHeaders });
   }
 
-  const { shop, subtotal, lines } = body;
+  const { shop, subtotal, lines, country } = body;
 
   if (!shop) {
     return json({ ok: false, giftVariantIds: [], error: "Missing shop" }, { status: 400, headers: corsHeaders });
@@ -47,9 +47,24 @@ export const action = async ({ request }) => {
 
   try {
     const { admin } = await unauthenticated.admin(shop);
+
+    // Storefront client is only needed for market-aware availability checks
+    // (i.e. when a country is supplied, which the checkout extension does).
+    // The theme cart script doesn't send one and falls back to Admin-API-only.
+    let storefront = null;
+    if (country) {
+      try {
+        ({ storefront } = await unauthenticated.storefront(shop));
+      } catch (storefrontError) {
+        console.error("Could not get storefront client, falling back to Admin API availability check:", storefrontError);
+      }
+    }
+
     const result = await evaluateFreeGiftCampaignsWithAdmin(admin, {
       subtotal: Number(subtotal || 0),
       lines: Array.isArray(lines) ? lines : [],
+      country: country || null,
+      storefront,
     });
     return json(result, { headers: corsHeaders });
   } catch (error) {
