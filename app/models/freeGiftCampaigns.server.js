@@ -270,8 +270,13 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
   const productFacts = await fetchCartProductFacts(admin, variantIds);
   const nonGiftLines = normalizedLines.filter((line) => !isAutoGiftLine(line));
 
+  // Always evaluate thresholds in shop base currency — the client-sent
+  // `subtotal` is in the buyer's presentment currency and isn't reliable
+  // for comparison against merchant-configured USD/base-currency thresholds.
+  const shopCurrencySubtotal = computeShopCurrencySubtotal(nonGiftLines, productFacts);
+
   const matchedCampaigns = activeCampaigns.filter((campaign) =>
-    campaignQualifies(campaign, nonGiftLines, productFacts, Number(subtotal || 0)),
+    campaignQualifies(campaign, nonGiftLines, productFacts, shopCurrencySubtotal),
   );
 
   // variantId -> campaignId, first matching campaign wins if a gift variant
@@ -471,6 +476,7 @@ async function fetchCartProductFacts(admin, variantIds) {
         nodes(ids: $ids) {
           ... on ProductVariant {
             id
+            price
             product {
               id
               productType
@@ -494,6 +500,7 @@ async function fetchCartProductFacts(admin, variantIds) {
   (json.data?.nodes || []).forEach((node) => {
     if (!node?.id) return;
     facts[node.id] = {
+      price: Number(node.price || 0), // shop base currency
       productId: node.product?.id || "",
       productType: node.product?.productType || "",
       tags: node.product?.tags || [],
@@ -501,6 +508,14 @@ async function fetchCartProductFacts(admin, variantIds) {
     };
   });
   return facts;
+}
+
+function computeShopCurrencySubtotal(lines, productFacts) {
+  return lines.reduce((sum, line) => {
+    const facts = productFacts[line.merchandiseId];
+    const price = facts?.price || 0;
+    return sum + price * Number(line.quantity || 0);
+  }, 0);
 }
 
 function makeAdminClient(shop, accessToken) {
