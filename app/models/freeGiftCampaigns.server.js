@@ -210,6 +210,43 @@ export async function ensureFreeGiftAutomaticDiscount(admin, existingDiscountId,
   }
 }
 
+async function fetchGiftVariantAvailability(admin, variantIds) {
+  if (!variantIds.length) return {};
+
+  const response = await admin.graphql(
+    `#graphql
+      query GiftVariantAvailability($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on ProductVariant {
+            id
+            availableForSale
+            inventoryPolicy
+            inventoryQuantity
+          }
+        }
+      }`,
+    { variables: { ids: variantIds } },
+  );
+  const json = await response.json();
+
+  if (json.errors) {
+    console.error("GiftVariantAvailability GraphQL errors:", JSON.stringify(json.errors, null, 2));
+  }
+
+  const availability = {};
+  (json.data?.nodes || []).forEach((node) => {
+    if (!node?.id) return;
+    availability[node.id] = isVariantAvailable(node);
+  });
+  return availability;
+}
+
+function isVariantAvailable(variant) {
+  if (!variant.availableForSale) return false;
+  if (variant.inventoryPolicy === "CONTINUE") return true; // overselling allowed
+  return (variant.inventoryQuantity ?? 0) > 0;
+}
+
 export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines }) {
   const { config } = await getFreeGiftConfig(admin);
   const activeCampaigns = config.campaigns.filter((c) => c.enabled);
@@ -249,10 +286,13 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
     }
   }
 
+  const availability = await fetchGiftVariantAvailability(admin, [...seenVariants]);
+  const inStockGifts = gifts.filter((g) => availability[g.variantId]);
+
   return {
     ok: true,
-    giftVariantIds: [...seenVariants],
-    gifts,
+    giftVariantIds: inStockGifts.map((g) => g.variantId),
+    gifts: inStockGifts,
     campaigns: matchedCampaigns.map((c) => ({ id: c.id, title: c.title })),
     notification: config.notification,
   };

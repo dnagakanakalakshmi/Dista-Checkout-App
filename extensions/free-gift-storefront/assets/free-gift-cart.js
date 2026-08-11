@@ -31,7 +31,7 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        background: #16a34a;
+        background: #FDC028;
         color: #fff;
         padding: 14px 22px;
         border-radius: 10px;
