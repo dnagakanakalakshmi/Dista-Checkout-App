@@ -123,8 +123,10 @@
     });
   }
 
+  const routesRoot = window.Shopify?.routes?.root || "/";
+
   async function fetchCart() {
-    const res = await internalFetch("/cart.js");
+    const res = await internalFetch(`${routesRoot}cart.js`);
     return res.json();
   }
 
@@ -203,7 +205,7 @@
         const keep = desiredVariantIds.has(variantId) && !seenVariants.has(variantId);
         seenVariants.add(variantId);
         if (!keep) {
-          await internalFetch("/cart/change.js", {
+          await internalFetch(`${routesRoot}cart/change.js`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: item.key, quantity: 0 }),
@@ -221,7 +223,7 @@
       for (const g of eligible) {
         if (existingVariantIds.has(g.variantId)) continue;
 
-        const response = await internalFetch("/cart/add.js", {
+        const response = await internalFetch(`${routesRoot}cart/add.js`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -257,7 +259,10 @@
 
       if (changed) {
         document.dispatchEvent(new CustomEvent("free-gift:cart-updated"));
-        await refreshCartUI();
+        // await refreshCartUI();
+        if (typeof BoosterTheme !== "undefined" && BoosterTheme.cart) {
+          await BoosterTheme.cart.dispatchListeners({ change: true });
+        }
       }
     } catch (error) {
       console.error("Free gift cart sync failed:", error);
@@ -266,26 +271,26 @@
     }
   }
 
-  async function refreshCartUI() {
-    const sectionIds = ["cart-icon-bubble", "cart-drawer"];
-    try {
-      const res = await internalFetch(`/?sections=${sectionIds.join(",")}`);
-      if (!res.ok) throw new Error("section fetch failed");
-      const sections = await res.json();
+  // async function refreshCartUI() {
+  //   const sectionIds = ["cart-icon-bubble", "cart-drawer"];
+  //   try {
+  //     const res = await internalFetch(`/?sections=${sectionIds.join(",")}`);
+  //     if (!res.ok) throw new Error("section fetch failed");
+  //     const sections = await res.json();
 
-      for (const id of sectionIds) {
-        const html = sections[id];
-        const target = document.getElementById(id) || document.querySelector(`[data-section-id="${id}"]`);
-        if (html && target) {
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          const newEl = doc.getElementById(id) || doc.querySelector(`[data-section-id="${id}"]`);
-          if (newEl) target.replaceWith(newEl);
-        }
-      }
-    } catch (error) {
-      window.location.reload();
-    }
-  }
+  //     for (const id of sectionIds) {
+  //       const html = sections[id];
+  //       const target = document.getElementById(id) || document.querySelector(`[data-section-id="${id}"]`);
+  //       if (html && target) {
+  //         const doc = new DOMParser().parseFromString(html, "text/html");
+  //         const newEl = doc.getElementById(id) || doc.querySelector(`[data-section-id="${id}"]`);
+  //         if (newEl) target.replaceWith(newEl);
+  //       }
+  //     }
+  //   } catch (error) {
+  //     window.location.reload();
+  //   }
+  // }
 
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
