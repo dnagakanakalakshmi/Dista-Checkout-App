@@ -1,5 +1,8 @@
 query CartInput($freegiftCollectionIds: [ID!]!, $tags: [String!]!) {
   cart {
+    attribute(key: "appbrew_instance_id") {
+      value
+    }
     lines {
       id
       quantity

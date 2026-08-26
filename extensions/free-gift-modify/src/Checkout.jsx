@@ -14,6 +14,7 @@ function FreeGift() {
   const shop = shopify.shop;
   const lines = shopify.lines.value;
   const subtotal = shopify.cost.subtotalAmount.value;
+  const attributes = shopify.attributes.value;
   const busy = useRef(false);
   const pendingRerun = useRef(false);
   const [notice, setNotice] = useState(null);
@@ -40,7 +41,7 @@ function FreeGift() {
 
   useEffect(() => {
     void syncGifts();
-  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain]);
+  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain, attributes]); 
 
   const syncGifts = async () => {
     if (busy.current) {
@@ -71,6 +72,7 @@ function FreeGift() {
             attributes: line.attributes || [],
             lineSubtotal: Number(line.cost?.totalAmount?.amount || 0),
           })),
+          cartAttributes: shopify.attributes.value, 
         }),
       });
 
@@ -86,11 +88,16 @@ function FreeGift() {
         const variantId = line.merchandise?.id;
         const duplicate = autoGiftLines.filter((l) => l.merchandise?.id === variantId).indexOf(line) > 0;
         if (!desiredGiftIds.includes(variantId) || duplicate) {
-          await shopify.applyCartLinesChange({
+          const removeResult = await shopify.applyCartLinesChange({
             type: 'removeCartLine',
             id: line.id,
             quantity: line.quantity,
           });
+
+
+          if (removeResult?.type === 'error' || removeResult?.errors?.length) {
+            console.error('Failed to remove auto-gift line:', variantId, removeResult?.errors);
+          }
         }
       }
 
@@ -107,7 +114,6 @@ function FreeGift() {
           ],
         });
 
-        console.log('Free gift add result:', variantId, result);
 
         const addSucceeded =
           result &&

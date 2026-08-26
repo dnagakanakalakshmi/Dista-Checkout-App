@@ -9,12 +9,15 @@ export const FREE_GIFT_QUERY_VARIABLES_KEY = "freegift-collection-ids";
 const DEFAULT_NOTIFICATION_TITLE = "You've unlocked free gifts!";
 const API_VERSION = "2026-04";
 
+const APPBREW_CART_ATTRIBUTE_KEY = "appbrew_instance_id";
+
 const EMPTY_CONFIG = {
   version: 1,
   campaigns: [],
   freegiftCollectionIds: [],
   tags: [],
   notification: { enabled: false, title: DEFAULT_NOTIFICATION_TITLE },
+  channelSettings: { appbrewEnabled: false }, // NEW
 };
 
 export async function getFreeGiftConfig(admin) {
@@ -247,8 +250,18 @@ function isVariantAvailable(variant) {
   return (variant.inventoryQuantity ?? 0) > 0;
 }
 
-export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines }) {
+export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes }) {
   const { config } = await getFreeGiftConfig(admin);
+  // NEW: Appbrew checkout with the feature disabled — no gifts, full stop.
+  if (hasAppbrewCartAttribute(cartAttributes) && !config.channelSettings.appbrewEnabled) {
+    return {
+      ok: true,
+      giftVariantIds: [],
+      gifts: [],
+      campaigns: [],
+      notification: config.notification,
+    };
+  }
   const activeCampaigns = config.campaigns.filter((c) => c.enabled);
 
   if (!activeCampaigns.length || !lines.length) {
@@ -301,13 +314,13 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
 
 // Old shop-based entrypoint becomes a thin wrapper (still used if you keep
 // any server-side/background callers around):
-export async function evaluateFreeGiftCampaigns({ shop, subtotal, lines }) {
+export async function evaluateFreeGiftCampaigns({ shop, subtotal, lines, cartAttributes }) {
   const session = await prisma.session.findFirst({ where: { shop, isOnline: false } });
   if (!session?.accessToken) {
     return { ok: false, giftVariantIds: [], error: "No active session found for shop" };
   }
   const admin = makeAdminClient(shop, session.accessToken);
-  return evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines });
+  return evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes });
 }
 
 export function normalizeConfig(config) {
@@ -325,7 +338,27 @@ export function normalizeConfig(config) {
       ...new Set(campaigns.flatMap((campaign) => campaign.conditions.tags || [])),
     ],
     notification: normalizeNotification(config?.notification),
+    channelSettings: normalizeChannelSettings(config?.channelSettings), // NEW
   };
+}
+
+function normalizeChannelSettings(channelSettings) {
+  return {
+    appbrewEnabled: Boolean(channelSettings?.appbrewEnabled),
+  };
+}
+
+// Accepts either the array form ({key, value}[]) sent by the checkout
+// extension, or the object-map form ({key: value}) sent by cart.js on
+// the storefront — both are valid shapes depending on the caller.
+function hasAppbrewCartAttribute(cartAttributes) {
+  if (!cartAttributes) return false;
+  if (Array.isArray(cartAttributes)) {
+    return cartAttributes.some(
+      (attr) => attr?.key === APPBREW_CART_ATTRIBUTE_KEY && String(attr.value || "").trim(),
+    );
+  }
+  return Boolean(String(cartAttributes[APPBREW_CART_ATTRIBUTE_KEY] || "").trim());
 }
 
 function normalizeNotification(notification) {

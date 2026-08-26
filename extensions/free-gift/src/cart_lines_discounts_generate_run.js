@@ -4,6 +4,7 @@ import {
 } from '../generated/api';
 
 const AUTO_GIFT_KEY_VALUE = 'true';
+const APPBREW_ATTRIBUTE_KEY = 'appbrew_instance_id';
 
 /**
  * @typedef {import("../generated/api").CartInput} RunInput
@@ -19,7 +20,17 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
-  const campaigns = normalizeCampaigns(input.discount.metafield?.jsonValue);
+  const config = input.discount.metafield?.jsonValue;
+
+  // NEW: Appbrew checkout with the feature disabled — never discount,
+  // regardless of what campaigns would otherwise qualify.
+  const channelSettings = normalizeChannelSettings(config?.channelSettings);
+  const appbrewAttributeValue = input.cart.attribute?.value;
+  if (appbrewAttributeValue && !channelSettings.appbrewEnabled) {
+    return { operations: [] };
+  }
+
+  const campaigns = normalizeCampaigns(config);
   if (!campaigns.length) {
     return { operations: [] };
   }
@@ -64,6 +75,13 @@ export function cartLinesDiscountsGenerateRun(input) {
         },
       },
     ],
+  };
+}
+
+// NEW
+function normalizeChannelSettings(channelSettings) {
+  return {
+    appbrewEnabled: Boolean(channelSettings?.appbrewEnabled),
   };
 }
 

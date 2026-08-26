@@ -33,12 +33,14 @@ export const action = async ({ request }) => {
     };
   } else if (intent === "save-settings") {
     let notification;
+    let channelSettings;
     try {
       notification = JSON.parse(formData.get("notification") || "{}");
+      channelSettings = JSON.parse(formData.get("channelSettings") || "{}");
     } catch {
       return json({ ok: false, errors: ["Invalid settings submitted"] }, { status: 400 });
     }
-    nextConfig = { ...currentConfig, notification };
+    nextConfig = { ...currentConfig, notification, channelSettings };
   } else {
     return json({ ok: false, errors: ["Unknown action"] }, { status: 400 });
   }
@@ -85,6 +87,9 @@ export default function FreeGiftCampaigns() {
   const [notification, setNotification] = useState(
     config.notification || { enabled: false, title: "You've unlocked free gifts!" },
   );
+  const [channelSettings, setChannelSettings] = useState(
+    config.channelSettings || { appbrewEnabled: false },
+  );
   const settingsFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const shopify = useAppBridge();
@@ -97,6 +102,7 @@ export default function FreeGiftCampaigns() {
     if (settingsFetcher.data.ok) {
       shopify.toast.show("Settings saved");
       setNotification(settingsFetcher.data.config?.notification || notification);
+      setChannelSettings(settingsFetcher.data.config?.channelSettings || channelSettings);
     } else if (settingsFetcher.data.errors?.length) {
       shopify.toast.show(settingsFetcher.data.errors[0], { isError: true, tone: "critical" });
     }
@@ -126,6 +132,7 @@ export default function FreeGiftCampaigns() {
         intent: "save-settings",
         discountId: latestDiscountId,
         notification: JSON.stringify(notification),
+        channelSettings: JSON.stringify(channelSettings),
       },
       { method: "post" },
     );
@@ -194,6 +201,22 @@ export default function FreeGiftCampaigns() {
               </s-button>
             </s-stack>
           )}
+
+          <s-card>
+            <s-stack gap="base">
+              <s-checkbox
+                label="Enable free gifts on Appbrew checkout"
+                checked={channelSettings.appbrewEnabled}
+                onChange={(event) =>
+                  setChannelSettings((c) => ({ ...c, appbrewEnabled: event.target.checked }))
+                }
+              />
+              <s-text tone="subdued">
+                When disabled, free gift campaigns won't apply on the Appbrew sales
+                channel, and any gift already in the cart will be removed at checkout.
+              </s-text>
+            </s-stack>
+          </s-card>
 
           <s-card>
             <s-stack gap="base">

@@ -259,9 +259,44 @@
 
       if (changed) {
         document.dispatchEvent(new CustomEvent("free-gift:cart-updated"));
-        // await refreshCartUI();
+
         if (typeof BoosterTheme !== "undefined" && BoosterTheme.cart) {
           await BoosterTheme.cart.dispatchListeners({ change: true });
+        } else {
+          const cartUiEl =
+            document.querySelector("cart-drawer") ||
+            document.querySelector("cart-notification");
+
+          if (cartUiEl && typeof cartUiEl.renderContents === "function") {
+            const sectionIds =
+              typeof cartUiEl.getSectionsToRender === "function"
+                ? cartUiEl.getSectionsToRender().map((s) => s.id || s.section)
+                : ["cart-drawer", "cart-coount-bubble"];
+
+            if (!sectionIds.includes("cart-count-bubble")) {
+              sectionIds.push("cart-count-bubble");
+            }
+
+            try {
+              const sectionsRes = await internalFetch(
+                `${routesRoot}cart/update.js?sections=${sectionIds.join(",")}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ updates: {} }),
+                }
+              );
+
+              if (sectionsRes.ok) {
+                const state = await sectionsRes.json();
+                cartUiEl.renderContents(state);
+              }
+            } catch (err) {
+              console.error("[free-gift] Dawn cart UI refresh failed:", err);
+            }
+          } else {
+            console.warn("[free-gift] no cartUiEl or renderContents method found");
+          }
         }
       }
     } catch (error) {
@@ -298,7 +333,7 @@
     const [resource, options] = args;
     const url = typeof resource === "string" ? resource : resource?.url || "";
     const isInternal = options?.headers?.[INTERNAL_HEADER];
-    if (!isInternal && /\/cart\/(change|update|add)\.js/.test(url) && response.ok) {
+    if (!isInternal && /\/cart\/(change|update|add)(\.js)?(\?|$)/.test(url) && response.ok) {
       scheduleSyncGifts();
     }
     return response;
