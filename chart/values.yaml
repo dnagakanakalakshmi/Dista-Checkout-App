@@ -25,7 +25,8 @@ fullnameOverride: ""
 
 serviceAccount:
   enabled: true
-  annotation: arn:aws:iam::518569466516:role/backend-access-shopify-app
+  # Dedicated IRSA role (namespace + SA scoped); reads only shopify-app-dista-checkout-secrets-* in Secrets Manager.
+  annotation: arn:aws:iam::518569466516:role/shopify-app-dista-checkout
 
 # Ingress configuration for AWS ALB
 ingress:
