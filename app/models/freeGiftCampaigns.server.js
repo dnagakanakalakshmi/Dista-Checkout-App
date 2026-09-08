@@ -252,7 +252,6 @@ function isVariantAvailable(variant) {
 
 export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes }) {
   const { config } = await getFreeGiftConfig(admin);
-  // NEW: Appbrew checkout with the feature disabled — no gifts, full stop.
   if (hasAppbrewCartAttribute(cartAttributes) && !config.channelSettings.appbrewEnabled) {
     return {
       ok: true,
@@ -289,25 +288,34 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
     campaignQualifies(campaign, nonGiftLines, productFacts, shopCurrencySubtotal),
   );
 
-  const seenVariants = new Set();
-  const gifts = [];
+  // SINGLE FREE GIFT with fallback: try matched campaigns in order; the
+  // first one whose gift(s) are actually in stock wins. If a campaign's
+  // gift is out of stock, fall through to the next matched campaign. If
+  // none have anything in stock, no gift is given.
+  let winningCampaign = null;
+  let gifts = [];
+
   for (const campaign of matchedCampaigns) {
-    for (const variantId of campaign.giftVariantIds || []) {
-      if (seenVariants.has(variantId)) continue;
-      seenVariants.add(variantId);
-      gifts.push({ variantId, campaignId: campaign.id });
+    const candidateVariantIds = [...new Set(campaign.giftVariantIds || [])];
+    if (!candidateVariantIds.length) continue;
+
+    const availability = await fetchGiftVariantAvailability(admin, candidateVariantIds);
+    const candidateGifts = candidateVariantIds
+      .filter((variantId) => availability[variantId])
+      .map((variantId) => ({ variantId, campaignId: campaign.id }));
+
+    if (candidateGifts.length) {
+      winningCampaign = campaign;
+      gifts = candidateGifts;
+      break;
     }
   }
 
-  const availability = await fetchGiftVariantAvailability(admin, [...seenVariants]);
-
-  const inStockGifts = gifts.filter((g) => availability[g.variantId]);
-
   return {
     ok: true,
-    giftVariantIds: inStockGifts.map((g) => g.variantId),
-    gifts: inStockGifts,
-    campaigns: matchedCampaigns.map((c) => ({ id: c.id, title: c.title })),
+    giftVariantIds: gifts.map((g) => g.variantId),
+    gifts,
+    campaigns: winningCampaign ? [{ id: winningCampaign.id, title: winningCampaign.title }] : [],
     notification: config.notification,
   };
 }
