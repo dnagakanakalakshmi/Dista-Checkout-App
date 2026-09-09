@@ -15,6 +15,7 @@ function FreeGift() {
   const lines = shopify.lines.value;
   const subtotal = shopify.cost.subtotalAmount.value;
   const attributes = shopify.attributes.value;
+  const countryCode = shopify.localization.country.value?.isoCode || null; // NEW
   const busy = useRef(false);
   const pendingRerun = useRef(false);
   const [notice, setNotice] = useState(null);
@@ -41,7 +42,7 @@ function FreeGift() {
 
   useEffect(() => {
     void syncGifts();
-  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain, attributes]); 
+  }, [cartFingerprint, subtotal?.amount, shop.myshopifyDomain, attributes, countryCode]); // NEW: re-sync if country resolves after mount 
 
   const syncGifts = async () => {
     if (busy.current) {
@@ -65,6 +66,7 @@ function FreeGift() {
         body: JSON.stringify({
           shop: shop.myshopifyDomain,
           subtotal: qualifyingSubtotal,
+          countryCode: shopify.localization.country.value?.isoCode || null, // NEW
           lines: currentLines.map((line) => ({
             id: line.id,
             quantity: line.quantity,

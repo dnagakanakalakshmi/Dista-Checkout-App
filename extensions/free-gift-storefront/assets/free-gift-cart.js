@@ -137,6 +137,8 @@
     const subtotal =
       nonGiftItems.reduce((sum, item) => sum + item.final_line_price, 0) / 100;
 
+    const countryCode = window.Shopify?.country || null; // NEW: buyer's market country
+
     let res;
     try {
       res = await internalFetch(`/apps/dista-checkout/apps/free-gift-campaigns`, {
@@ -145,6 +147,7 @@
         body: JSON.stringify({
           shop,
           subtotal,
+          countryCode, // NEW
           lines: nonGiftItems.map((item) => ({
             merchandiseId: `gid://shopify/ProductVariant/${item.variant_id}`,
             quantity: item.quantity,

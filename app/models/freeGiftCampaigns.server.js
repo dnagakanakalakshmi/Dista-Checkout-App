@@ -26,6 +26,7 @@ export async function getFreeGiftConfig(admin) {
       query FreeGiftConfig {
         shop {
           id
+          currencyCode
           metafield(namespace: "$app", key: "gift_campaign_config") {
             value
             jsonValue
@@ -43,6 +44,7 @@ export async function getFreeGiftConfig(admin) {
   return {
     shopId,
     config,
+    shopCurrencyCode: json.data?.shop?.currencyCode || null, // NEW
     discountId: json.data?.shop?.discountMetafield?.value || "",
   };
 }
@@ -250,8 +252,8 @@ function isVariantAvailable(variant) {
   return (variant.inventoryQuantity ?? 0) > 0;
 }
 
-export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes }) {
-  const { config } = await getFreeGiftConfig(admin);
+export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes, countryCode }) {
+  const { config, shopCurrencyCode } = await getFreeGiftConfig(admin);
   if (hasAppbrewCartAttribute(cartAttributes) && !config.channelSettings.appbrewEnabled) {
     return {
       ok: true,
@@ -279,7 +281,7 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
     lineSubtotal: Number(line.lineSubtotal || 0),
   }));
   const variantIds = [...new Set(normalizedLines.map((l) => l.merchandiseId).filter(Boolean))];
-  const productFacts = await fetchCartProductFacts(admin, variantIds);
+  const productFacts = await fetchCartProductFacts(admin, variantIds, countryCode, shopCurrencyCode);
   const nonGiftLines = normalizedLines.filter((line) => !isAutoGiftLine(line));
 
   const shopCurrencySubtotal = computeShopCurrencySubtotal(nonGiftLines, productFacts);
@@ -322,13 +324,13 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
 
 // Old shop-based entrypoint becomes a thin wrapper (still used if you keep
 // any server-side/background callers around):
-export async function evaluateFreeGiftCampaigns({ shop, subtotal, lines, cartAttributes }) {
+export async function evaluateFreeGiftCampaigns({ shop, subtotal, lines, cartAttributes, countryCode }) {
   const session = await prisma.session.findFirst({ where: { shop, isOnline: false } });
   if (!session?.accessToken) {
     return { ok: false, giftVariantIds: [], error: "No active session found for shop" };
   }
   const admin = makeAdminClient(shop, session.accessToken);
-  return evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes });
+  return evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, lines, cartAttributes, countryCode });
 }
 
 export function normalizeConfig(config) {
@@ -504,16 +506,18 @@ function buildAutomaticDiscountInput(config) {
   };
 }
 
-async function fetchCartProductFacts(admin, variantIds) {
+async function fetchCartProductFacts(admin, variantIds, countryCode, shopCurrencyCode) {
   if (!variantIds.length) return {};
 
   const response = await admin.graphql(
     `#graphql
-      query VariantProductFacts($ids: [ID!]!) {
+      query VariantProductFacts($ids: [ID!]!, $context: ContextualPricingContext!) {
         nodes(ids: $ids) {
           ... on ProductVariant {
             id
-            price
+            contextualPricing(context: $context) {
+              price { amount currencyCode }
+            }
             product {
               id
               productType
@@ -525,7 +529,15 @@ async function fetchCartProductFacts(admin, variantIds) {
           }
         }
       }`,
-    { variables: { ids: variantIds } },
+    {
+      variables: {
+        ids: variantIds,
+        context: {
+          ...(countryCode ? { country: countryCode } : {}),
+          ...(shopCurrencyCode ? { presentmentCurrencyCode: shopCurrencyCode } : {}),
+        },
+      },
+    },
   );
   const json = await response.json();
 
@@ -537,7 +549,7 @@ async function fetchCartProductFacts(admin, variantIds) {
   (json.data?.nodes || []).forEach((node) => {
     if (!node?.id) return;
     facts[node.id] = {
-      price: Number(node.price || 0), // shop base currency
+      price: Number(node.contextualPricing?.price?.amount || 0), // normalized to shop currency
       productId: node.product?.id || "",
       productType: node.product?.productType || "",
       tags: node.product?.tags || [],

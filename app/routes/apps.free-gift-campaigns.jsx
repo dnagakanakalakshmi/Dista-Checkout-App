@@ -39,7 +39,7 @@ export const action = async ({ request }) => {
     return json({ ok: false, giftVariantIds: [], error: "Invalid JSON body" }, { status: 400, headers: corsHeaders });
   }
 
-  const { shop, subtotal, lines, cartAttributes } = body;
+  const { shop, subtotal, lines, cartAttributes, countryCode } = body;
 
   if (!shop) {
     return json({ ok: false, giftVariantIds: [], error: "Missing shop" }, { status: 400, headers: corsHeaders });
@@ -51,7 +51,8 @@ export const action = async ({ request }) => {
     const result = await evaluateFreeGiftCampaignsWithAdmin(admin, {
       subtotal: Number(subtotal || 0),
       lines: Array.isArray(lines) ? lines : [],
-      cartAttributes, // NEW
+      cartAttributes,
+      countryCode: typeof countryCode === "string" ? countryCode : null, // NEW
     });
     return json(result, { headers: corsHeaders });
   } catch (error) {
