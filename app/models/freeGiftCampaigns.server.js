@@ -284,10 +284,10 @@ export async function evaluateFreeGiftCampaignsWithAdmin(admin, { subtotal, line
   const productFacts = await fetchCartProductFacts(admin, variantIds, countryCode, shopCurrencyCode);
   const nonGiftLines = normalizedLines.filter((line) => !isAutoGiftLine(line));
 
-  const shopCurrencySubtotal = computeShopCurrencySubtotal(nonGiftLines, productFacts);
+  const { subtotal: localSubtotal, currencyCode } = computeSubtotalWithCurrency(nonGiftLines, productFacts);
 
   const matchedCampaigns = activeCampaigns.filter((campaign) =>
-    campaignQualifies(campaign, nonGiftLines, productFacts, shopCurrencySubtotal),
+    campaignQualifies(campaign, nonGiftLines, productFacts, localSubtotal, currencyCode),
   );
 
   // SINGLE FREE GIFT with fallback: try matched campaigns in order; the
@@ -388,6 +388,7 @@ export function normalizeCampaign(campaign) {
     enabled: Boolean(campaign.enabled),
     subtotalThreshold: normalizeThreshold(campaign.subtotalThreshold),
     subtotalMax: normalizeThreshold(campaign.subtotalMax),
+    currencyThresholds: normalizeCurrencyThresholds(campaign.currencyThresholds), // NEW
     logic: campaign.logic === "AND" ? "AND" : "OR",
     giftVariantIds: uniqueStrings(campaign.giftVariantIds),
     giftProducts: Array.isArray(campaign.giftProducts) ? campaign.giftProducts : [],
@@ -398,6 +399,19 @@ export function normalizeCampaign(campaign) {
       tags: uniqueStrings(campaign.conditions?.tags),
     },
   };
+}
+
+// { USD: { subtotalThreshold: 60, subtotalMax: null }, INR: { ... } }
+function normalizeCurrencyThresholds(value) {
+  if (!value || typeof value !== "object") return {};
+  const out = {};
+  for (const [code, cfg] of Object.entries(value)) {
+    out[String(code).toUpperCase()] = {
+      subtotalThreshold: normalizeThreshold(cfg?.subtotalThreshold),
+      subtotalMax: normalizeThreshold(cfg?.subtotalMax),
+    };
+  }
+  return out;
 }
 
 // null/undefined/"" => null ("not configured", no subtotal restriction)
@@ -426,10 +440,15 @@ function isLineEligible(conditions, facts) {
   return false;
 }
 
-export function campaignQualifies(campaign, lines, productFacts, subtotal) {
+export function campaignQualifies(campaign, lines, productFacts, subtotal, currencyCode) {
   const conditions = campaign.conditions || {};
-  const min = campaign.subtotalThreshold; // null | number
-  const max = campaign.subtotalMax; // null | number
+  const thresholds = campaign.currencyThresholds || {};
+  const perCurrency = currencyCode ? thresholds[currencyCode] : null;
+
+  // Falls back to the legacy single-currency fields if no per-currency
+  // threshold is configured for this buyer's currency.
+  const min = perCurrency?.subtotalThreshold ?? campaign.subtotalThreshold;
+  const max = perCurrency?.subtotalMax ?? campaign.subtotalMax;
 
   const results = [];
 
@@ -532,10 +551,7 @@ async function fetchCartProductFacts(admin, variantIds, countryCode, shopCurrenc
     {
       variables: {
         ids: variantIds,
-        context: {
-          ...(countryCode ? { country: countryCode } : {}),
-          ...(shopCurrencyCode ? { presentmentCurrencyCode: shopCurrencyCode } : {}),
-        },
+        context: countryCode ? { country: countryCode } : {},
       },
     },
   );
@@ -549,7 +565,8 @@ async function fetchCartProductFacts(admin, variantIds, countryCode, shopCurrenc
   (json.data?.nodes || []).forEach((node) => {
     if (!node?.id) return;
     facts[node.id] = {
-      price: Number(node.contextualPricing?.price?.amount || 0), // normalized to shop currency
+      price: Number(node.contextualPricing?.price?.amount || 0),
+      currencyCode: node.contextualPricing?.price?.currencyCode || null, // e.g. "USD"
       productId: node.product?.id || "",
       productType: node.product?.productType || "",
       tags: node.product?.tags || [],
@@ -559,12 +576,16 @@ async function fetchCartProductFacts(admin, variantIds, countryCode, shopCurrenc
   return facts;
 }
 
-function computeShopCurrencySubtotal(lines, productFacts) {
-  return lines.reduce((sum, line) => {
+function computeSubtotalWithCurrency(lines, productFacts) {
+  let sum = 0;
+  let currencyCode = null;
+  for (const line of lines) {
     const facts = productFacts[line.merchandiseId];
     const price = facts?.price || 0;
-    return sum + price * Number(line.quantity || 0);
-  }, 0);
+    sum += price * Number(line.quantity || 0);
+    if (!currencyCode && facts?.currencyCode) currencyCode = facts.currencyCode;
+  }
+  return { subtotal: sum, currencyCode };
 }
 
 function makeAdminClient(shop, accessToken) {
