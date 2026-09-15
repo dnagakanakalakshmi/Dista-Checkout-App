@@ -144,6 +144,18 @@ async function createDeliveryCustomizationWithHandle(shop, functionHandle, title
   }
 }
 
+export async function ensureDeliveryCustomizationExists(shop, { title, functionHandle }) {
+  const customizations = await getDeliveryCustomizations(shop);
+  const match = customizations.find((node) => node?.title === title);
+
+  if (!match) {
+    await createDeliveryCustomizationWithHandle(shop, functionHandle, title);
+    return { created: true, enabled: true };
+  }
+
+  return { created: false, enabled: match.enabled };
+}
+
 export async function isDeliveryCustomizationEnabledByTitle(shop, title) {
   const customizations = await getDeliveryCustomizations(shop);
   const match = customizations.find((node) => node?.title === title);

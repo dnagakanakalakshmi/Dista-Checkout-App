@@ -9,7 +9,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import shopify from "../shopify.server";
-import { runDeliveryCustomizationCreate } from "../delivery-customization-util";
+import { ensureDeliveryCustomizationExists } from "../delivery-customization-util";
 
 
 export const loader = async ({ request }) => {
@@ -22,31 +22,34 @@ export const loader = async ({ request }) => {
   let error = null;
   try {
 
-    const query = `{
-      deliveryCustomizations(first: 10) {
-        nodes { id enabled title }
-      }
-    }`;
-    const resp = await admin.graphql(query);
-    const data = await resp.json();
-    const nodes = data?.data?.deliveryCustomizations?.nodes || [];
+    // const query = `{
+    //   deliveryCustomizations(first: 10) {
+    //     nodes { id enabled title }
+    //   }
+    // }`;
+    // const resp = await admin.graphql(query);
+    // const data = await resp.json();
+    // const nodes = data?.data?.deliveryCustomizations?.nodes || [];
     
-    // Check for each specific function by title
-    const deliveryCustomizationNode = nodes.find(n => n.title === "Estimated Delivery Dates");
-    const remoteDeliveryNode = nodes.find(n => n.title === "Remote Area Delivery Filter");
+    // // Check for each specific function by title
+    // const deliveryCustomizationNode = nodes.find(n => n.title === "Estimated Delivery Dates");
+    // const remoteDeliveryNode = nodes.find(n => n.title === "Remote Area Delivery Filter");
     
-    attached = deliveryCustomizationNode?.enabled ?? false;
-    remoteAttached = remoteDeliveryNode?.enabled ?? false;
+    // attached = deliveryCustomizationNode?.enabled ?? false;
+    // remoteAttached = remoteDeliveryNode?.enabled ?? false;
 
-    // If not attached, attach delivery-customization function
-    if (!attached) {
-      await runDeliveryCustomizationCreate(shop, "delivery-customization", "Estimated Delivery Dates");
-    }
+    const est = await ensureDeliveryCustomizationExists(shop, {
+      title: "Estimated Delivery Dates",
+      functionHandle: "delivery-customization",
+    });
+    attached = est.enabled;
 
-    // Attach remote-delivery-options function
-    if(!remoteAttached){
-      await runDeliveryCustomizationCreate(shop, "remote-delivery-options", "Remote Area Delivery Filter");
-    }
+    const remote = await ensureDeliveryCustomizationExists(shop, {
+      title: "Remote Area Delivery Filter",
+      functionHandle: "remote-delivery-options",
+    });
+    remoteAttached = remote.enabled;
+
   } catch (e) {
     console.error("Error in delivery customization loader:", e);
     error = e.message || String(e);
