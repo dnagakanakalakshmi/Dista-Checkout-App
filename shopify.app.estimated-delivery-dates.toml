@@ -1,9 +1,17 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2c7c2cd0fc2bbf7adced3353d533122e"
-application_url = "https://discussions-porcelain-jonathan-neighbor.trycloudflare.com"
+application_url = "https://jerry-ecology-ice-currently.trycloudflare.com"
 embedded = true
 name = "estimated-delivery-dates"
+
+[app_proxy]
+url = "https://jerry-ecology-ice-currently.trycloudflare.com"
+subpath = "dista-checkout"
+prefix = "apps"
+
+[webhooks]
+api_version = "2026-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -13,16 +21,8 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://discussions-porcelain-jonathan-neighbor.trycloudflare.com/api/auth"
+  "https://jerry-ecology-ice-currently.trycloudflare.com/api/auth"
 ]
-
-[webhooks]
-api_version = "2026-04"
-
-[app_proxy]
-url = "https://discussions-porcelain-jonathan-neighbor.trycloudflare.com"
-subpath = "dista-checkout"
-prefix = "apps"
 
 [build]
 automatically_update_urls_on_dev = true

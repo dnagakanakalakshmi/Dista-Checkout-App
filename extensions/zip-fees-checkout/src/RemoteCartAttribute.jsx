@@ -1,31 +1,20 @@
-import { useEffect } from 'react';
-import {
-  reactExtension,
-  useApi,
-  useApplyAttributeChange,
-  useShippingAddress,
-  useCustomer,
-  useCartLines,
-  useShop,
-  useEmail,
-} from '@shopify/ui-extensions-react/checkout';
+import { useEffect } from 'preact/hooks';
+import '@shopify/ui-extensions/preact';
+import { render } from 'preact';
 
-export default reactExtension(
-  'purchase.checkout.block.render',
-  () => <RemoteCartAttribute />
-);
+export default function extension() {
+  render(<RemoteCartAttribute />, document.body);
+}
 
 // Simple in-memory cache for remote area checks
 const remoteCache = new Map();
 
 function RemoteCartAttribute() {
-  const api = useApi();
-  const shop = useShop();
-  const applyAttributeChange = useApplyAttributeChange();
-  const address = useShippingAddress();
-  const customer = useCustomer();
-  const lines = useCartLines();
-  const email = useEmail();
+  const shop = shopify.shop;
+  const address = shopify.shippingAddress?.value;
+  const customer = shopify.buyerIdentity?.customer.value;
+  const lines = shopify.lines.value;
+  const email = shopify.buyerIdentity?.email.value;
 
   useEffect(() => {
     async function checkRemoteArea() {
@@ -39,7 +28,7 @@ function RemoteCartAttribute() {
         // Check cache first for instant response
         if (remoteCache.has(cacheKey)) {
           const cachedValue = remoteCache.get(cacheKey);
-          await applyAttributeChange({
+          await shopify.applyAttributeChange({
             type: 'updateAttribute',
             key: 'isRemote',
             value: cachedValue.toString(),
@@ -47,17 +36,9 @@ function RemoteCartAttribute() {
           return;
         }
 
-        // Optimistically set to false immediately for smooth UX
-        // This shows delivery options without waiting for API
-        // await applyAttributeChange({
-        //   type: 'updateAttribute',
-        //   key: 'isRemote',
-        //   value: 'false',
-        // });
-
         // Calculate subtotal
         const subtotal = lines.reduce((sum, l) => sum + Number(l.cost.totalAmount.amount), 0);
-        const currencyCode = api.localization.currency.current.isoCode;
+        const currencyCode = shopify.localization.currency.value.isoCode;
 
         // Build the comprehensive request body
         const body = {
@@ -103,7 +84,7 @@ function RemoteCartAttribute() {
           
           // Localization & Currency
           currencyCode,
-          language: api.localization.language.current.isoCode,
+          language: shopify.localization.language.value.isoCode,
           
           // Store Info
           storeName: shop.name,
@@ -124,7 +105,7 @@ function RemoteCartAttribute() {
         remoteCache.set(cacheKey, isRemote);
 
         // Always update the attribute with the actual result
-        await applyAttributeChange({
+        await shopify.applyAttributeChange({
           type: 'updateAttribute',
           key: 'isRemote',
           value: isRemote.toString(),

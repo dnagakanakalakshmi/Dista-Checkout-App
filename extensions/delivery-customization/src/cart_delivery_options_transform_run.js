@@ -16,18 +16,25 @@ export function cartDeliveryOptionsTransformRun(input) {
     input?.shop?.metafield?.value
   ) || {};
 
-  const templates = Array.isArray(shopConfig.templates)
-    ? shopConfig.templates
-    : [];
+  const shopSettings = {
+    readyToShipRegularRange: parseShopDispatchRange(
+      input?.shop?.readyToShipRegular?.value
+    ),
 
-  const replacementFormat =
-    shopConfig.replacementFormat ||
-    "Estimated Delivery: {label}";
+    readyToShipOnlineRange: parseShopDispatchRange(
+      input?.shop?.readyToShipOnlineOrders?.value
+    ),
 
+    fallbackRange: parseShopDispatchRange(
+      input?.shop?.fallbackDispatchDays?.value
+    ) || { min: 5, max: 6 }
+  };
+
+  const templates = Array.isArray(shopConfig.templates) ? shopConfig.templates : [];
+  const replacementFormat = shopConfig.replacementFormat || "Estimated Delivery: {label}";
   const countries = Array.isArray(shopConfig.countries)
     ? shopConfig.countries.map(c => String(c).toUpperCase().trim())
     : [];
-
   const allowAllCountries = countries.includes("ALL");
 
   const groups = input?.cart?.deliveryGroups || [];
@@ -35,10 +42,7 @@ export function cartDeliveryOptionsTransformRun(input) {
   const operations = [];
 
   for (const group of groups) {
-    const countryCode = String(
-      group?.deliveryAddress?.countryCode || ""
-    ).toUpperCase();
-
+    const countryCode = String(group?.deliveryAddress?.countryCode || "").toUpperCase();
     const isAllowed =
       countries.length > 0
         ? allowAllCountries || countries.includes(countryCode)
@@ -46,58 +50,27 @@ export function cartDeliveryOptionsTransformRun(input) {
 
     if (!isAllowed) continue;
 
-    const lineData = getLineDeliveryData(
-      allLines,
-      countryCode
-    );
-
-    const {
-      readyMin,
-      readyMax,
-      overallMinStart,
-      overallMaxEnd
-    } = getReadyDays(input, lineData);
+    const lineData = getLineDeliveryData(allLines, countryCode, shopSettings);
+    const { readyMin, readyMax, overallMinStart, overallMaxEnd } = getReadyDays(input, lineData, shopConfig);
 
     for (const option of group.deliveryOptions || []) {
       const title = String(option.title || "");
       const parsedDays =
         parseDaysFromTemplates(title, templates) ||
         parseShippingDaysFromText(title) ||
-        getKeywordDefaultDays(title) || {
-          min: 3,
-          max: 5
-        };
+        { min: 3, max: 5 };
 
-      const deliveryMinDays =
-        readyMin + parsedDays.min;
-
-      const deliveryMaxDays =
-        readyMax + parsedDays.max;
-
-      let displayStart = addBusinessDays(
-        now,
-        deliveryMinDays
-      );
-
-      let displayEnd = addBusinessDays(
-        now,
-        deliveryMaxDays
-      );
-
+      const deliveryMinDays = readyMin + parsedDays.min;
+      const deliveryMaxDays = readyMax + parsedDays.max;
+      let displayStart = addBusinessDays(now, deliveryMinDays);
+      let displayEnd = addBusinessDays(now, deliveryMaxDays);
       if (overallMinStart && overallMaxEnd) {
         displayStart = overallMinStart;
         displayEnd = overallMaxEnd;
       }
 
-      const displayLabel =
-        `${formatDateShort(displayStart)} - ${formatDateShort(displayEnd)}`;
-
-      const newTitle = buildUpdatedTitle(
-        title,
-        parsedDays.match,
-        replacementFormat,
-        displayLabel
-      );
+      const displayLabel = `${formatDateShort(displayStart)} - ${formatDateShort(displayEnd)}`;
+      const newTitle = buildUpdatedTitle(title, parsedDays.match, replacementFormat, displayLabel);
 
       operations.push({
         deliveryOptionRename: {
@@ -108,12 +81,34 @@ export function cartDeliveryOptionsTransformRun(input) {
     }
   }
 
-  return operations.length
-    ? { operations }
-    : NO_CHANGES;
+  return operations.length ? { operations } : NO_CHANGES;
 }
 
 /* ---------------- HELPERS ---------------- */
+
+function parseShopDispatchRange(rawValue) {
+  const parsed = parseJson(rawValue);
+
+  if (!parsed) return null;
+
+  const min = toNumberSafe(
+    parsed.delivery_min_days ??
+    parsed.minDays ??
+    parsed.min
+  );
+
+  const max = toNumberSafe(
+    parsed.delivery_max_days ??
+    parsed.maxDays ??
+    parsed.max
+  );
+
+  if (min === 0 && max === 0) {
+    return null;
+  }
+
+  return { min, max };
+}
 
 function parseJson(value) {
   if (!value) return null;
@@ -139,6 +134,10 @@ function getNextBusinessDay(date) {
 function addBusinessDays(start, days) {
   const d = new Date(start);
   let added = 0;
+
+  if (d.getDay() !== 0 && d.getDay() !== 6) {
+    added = 1;
+  }
 
   while (added < days) {
     d.setDate(d.getDate() + 1);
@@ -243,35 +242,62 @@ function parseRapidDeliveryEligible(rawVal, countryCode) {
   );
 }
 
-function getLineDeliveryData(lines, countryCode) {
-  return lines.map(line => {
-    const parsed = parseVariantReadyValue(
-      line?.merchandise?.metafield?.jsonValue ??
-      line?.merchandise?.metafield?.value
-    );
+/**
+ * rapid → variant metafield → tag-based (Online Product → ready_to_ship_online_orders,
+ * else ready_to_ship_regular, IF that metafield is set) → global shop fallback.
+ * Tier 3 is no longer gated on dispatch_days_source (unreachable from a Function) —
+ * it's applied whenever the underlying metafields exist, and just falls through
+ * to tier 4 when they don't.
+ */
+function getLineDispatchRange(line, countryCode, shopSettings) {
+  const rapidEligible = parseRapidDeliveryEligible(
+    line?.merchandise?.rapidDeliveryEligible?.jsonValue ??
+    line?.merchandise?.rapidDeliveryEligible?.value,
+    countryCode
+  );
+  if (countryCode === "US" && rapidEligible) {
+    return { min: 1, max: 1 };
+  }
 
-    const rapidEligible =
-      parseRapidDeliveryEligible(
-        line?.merchandise?.rapidDeliveryEligible?.jsonValue ??
-        line?.merchandise?.rapidDeliveryEligible?.value,
-        countryCode
-      );
+  const variantRange = parseVariantReadyValue(
+    line?.merchandise?.metafield?.jsonValue ??
+    line?.merchandise?.metafield?.value
+  );
+  if (variantRange && (variantRange.min != null || variantRange.max != null)) return variantRange;
 
-    return {
-      parsed:
-        countryCode === "US" && rapidEligible
-          ? { ...(parsed || {}), min: 1, max: 1 }
-          : parsed
-    };
-  });
+  const hasOnlineTag = Boolean(
+    line?.merchandise?.product?.hasTags?.find(t => t.tag === "Online Product")?.hasTag
+  );
+
+  if (hasOnlineTag && shopSettings.readyToShipOnlineRange) return shopSettings.readyToShipOnlineRange;
+  if (shopSettings.readyToShipRegularRange) return shopSettings.readyToShipRegularRange;
+  return shopSettings.fallbackRange;
+}
+
+function getLineDeliveryData(lines, countryCode, shopSettings) {
+  return lines.map(line => ({
+    parsed: getLineDispatchRange(
+      line,
+      countryCode,
+      shopSettings
+    ),
+
+    hasOnlineProductTag: Boolean(
+      line?.merchandise?.product?.hasTags?.find(
+        t => t.tag === "Online Product"
+      )?.hasTag
+    )
+  }));
 }
 
 function getReadyDays(input, lineData) {
-  let anyMissing = false;
   let highestMax = 0;
   let correspondingMin = 0;
+
   let overallMinStart = null;
   let overallMaxEnd = null;
+
+  let anyMissing = false;
 
   for (const line of lineData) {
     const d = line.parsed;
@@ -288,6 +314,7 @@ function getReadyDays(input, lineData) {
 
     if (d.startISO) {
       const s = new Date(d.startISO);
+
       if (!overallMinStart || s < overallMinStart) {
         overallMinStart = s;
       }
@@ -295,29 +322,80 @@ function getReadyDays(input, lineData) {
 
     if (d.endISO) {
       const e = new Date(d.endISO);
+
       if (!overallMaxEnd || e > overallMaxEnd) {
         overallMaxEnd = e;
       }
     }
   }
 
-  let fallbackMin = 0;
-  let fallbackMax = 0;
+  // If every variant has its own dispatch range,
+  // use the variant-level result.
+  if (!anyMissing && highestMax > 0) {
+    return {
+      readyMin: correspondingMin,
+      readyMax: highestMax,
+      overallMinStart,
+      overallMaxEnd
+    };
+  }
 
-  if (anyMissing) {
-    fallbackMin = 5;
-    fallbackMax = 6;
+  // Product/shop-level fallback
+  const regular = parseJson(
+    input?.shop?.readyToShipRegular?.jsonValue ??
+    input?.shop?.readyToShipRegular?.value
+  );
+
+  const online = parseJson(
+    input?.shop?.readyToShipOnlineOrders?.jsonValue ??
+    input?.shop?.readyToShipOnlineOrders?.value
+  );
+
+  const regularMin = toNumberSafe(
+    regular?.delivery_min_days
+  );
+
+  const regularMax = toNumberSafe(
+    regular?.delivery_max_days
+  );
+
+  const onlineMin = toNumberSafe(
+    online?.delivery_min_days
+  );
+
+  const onlineMax = toNumberSafe(
+    online?.delivery_max_days
+  );
+
+  const hasOnlineProduct = lineData.some(
+    line => line.hasOnlineProductTag
+  );
+
+  if (
+    hasOnlineProduct &&
+    onlineMin > 0 &&
+    onlineMax > 0
+  ) {
+    return {
+      readyMin: onlineMin,
+      readyMax: onlineMax,
+      overallMinStart,
+      overallMaxEnd
+    };
+  }
+
+  if (regularMin > 0 && regularMax > 0) {
+    return {
+      readyMin: regularMin,
+      readyMax: regularMax,
+      overallMinStart,
+      overallMaxEnd
+    };
   }
 
   return {
-    readyMin: Math.max(
-      correspondingMin,
-      fallbackMin
-    ),
-    readyMax: Math.max(
-      highestMax,
-      fallbackMax
-    ),
+    readyMin: 5,
+    readyMax: 6,
     overallMinStart,
     overallMaxEnd
   };
@@ -328,8 +406,9 @@ function parseShippingDaysFromText(text) {
 
   const t = text.toLowerCase();
 
-  const range =
-    t.match(/(\d+)\s*(?:-|to)\s*(\d+)/);
+  const range = t.match(
+    /(\d+)\s*(?:-|–|—|to)\s*(\d+)/
+  );
 
   if (range) {
     return {
@@ -339,7 +418,7 @@ function parseShippingDaysFromText(text) {
     };
   }
 
-  const plus = t.match(/(\d+)\+/);
+  const plus = t.match(/(\d+)\s*\+/);
 
   if (plus) {
     const min = Number(plus[1]);

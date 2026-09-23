@@ -1,22 +1,15 @@
-import {
-  reactExtension,
-  Text,
-  useCartLineTarget,
-  useLocalizationCountry,
-  useAppMetafields,
-  useDeliveryGroups
-} from '@shopify/ui-extensions-react/checkout';
+import '@shopify/ui-extensions/preact';
+import { render } from 'preact';
+import { useAppMetafields } from '@shopify/ui-extensions/checkout/preact';
 
-export default reactExtension(
-  'purchase.checkout.cart-line-item.render-after',
-  () => <Extension />,
-);
+export default function extension() {
+  render(<Extension />, document.body);
+}
 
 function Extension() {
-  // useCartLineTarget: get the cart line's variant id
-  const { merchandise } = useCartLineTarget();
+  const { merchandise } = shopify.target.value;
   const variantId = merchandise?.id;
-  const deliveryGroups = useDeliveryGroups?.() || [];
+  const deliveryGroups = shopify.deliveryGroups?.value || [];
   const firstGroup = deliveryGroups[0];
   const selectedHandle = firstGroup?.selectedDeliveryOption?.handle;
   const selectedOption = firstGroup?.deliveryOptions?.find((o) => o.handle === selectedHandle) || null;
@@ -29,10 +22,8 @@ function Extension() {
   const shopMetafields = useAppMetafields({ type: 'shop', namespace: 'distacart', key: 'country_data' });
   const templatesMetafields = useAppMetafields({ type: 'shop', namespace: 'distacart', key: 'delivery_templates' });
 
-  // localization hook (returns country of checkout and re-renders on change)
-  const localeCountry = useLocalizationCountry();
-
   // Only show dispatch dates for UK
+  const localeCountry = shopify.localization.country.value;
   const rawCountry = localeCountry?.isoCode ?? localeCountry?.code ?? localeCountry?.value ?? 'US';
   const countryCode = String(rawCountry).toUpperCase();
 
@@ -79,7 +70,7 @@ function Extension() {
       const parsed = JSON.parse(variantEntry.metafield.value);
       const [vMin, vMax] = extractMinMax(parsed);
       if (vMin != null && vMax != null) {
-        return <Text>Dispatched between {vMin}-{vMax} business days</Text>;
+        return <s-text>Dispatched between {vMin}-{vMax} business days</s-text>;
       }
     } catch (e) {
       console.warn('[product-dispatch-dates] variant metafield parse error', e);
@@ -87,7 +78,7 @@ function Extension() {
     }
   }
 
-  // Variant missing or invalid � use shop-level country data as default
+  // Variant missing or invalid — use shop-level country data as default
   const shopEntry = shopMetafields && shopMetafields.length ? shopMetafields[0] : null;
   if (shopEntry?.metafield?.value) {
     try {
@@ -99,7 +90,7 @@ function Extension() {
         // Country-level direct min/max
         const [countryMin, countryMax] = extractMinMax(countryObj);
         if (countryMin != null && countryMax != null) {
-          return <Text>Dispatched between {countryMin}-{countryMax} business days</Text>;
+          return <s-text>Dispatched between {countryMin}-{countryMax} business days</s-text>;
         }
 
         const shippingRates = countryObj['shipping rates'] || countryObj['shipping_rates'] || {};
@@ -135,7 +126,7 @@ function Extension() {
         }
         
         if (sMin != null && sMax != null) {
-          return <Text>Dispatched between {sMin}-{sMax} business days</Text>;
+          return <s-text>Dispatched between {sMin}-{sMax} business days</s-text>;
         }
         // else continue to fallback
       } else {
