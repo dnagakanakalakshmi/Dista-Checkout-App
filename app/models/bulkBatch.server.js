@@ -225,6 +225,7 @@ export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
 
   const appliesToText = formatAppliesToForCSV(template.appliesTo);
   const minimumRequirementText = formatMinimumRequirementForCSV(template.minimumRequirement);
+  const maximumRequirementText = formatMaximumRequirementForCSV(template.maximumRequirement);
   const customerEligibilityText = formatCustomerEligibilityForCSV(template.customerEligibility);
   const tagsText = (template.tags || []).join("; ");
   const discountTypeText = template.discountType || "";
@@ -255,6 +256,7 @@ export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
     "Usage Limit",
     "Applies To",
     "Minimum Requirement",
+    "Maximum Requirement",
     "Customer Eligibility",
     "Applies Once Per Customer",
     "Purchase Type",
@@ -276,6 +278,7 @@ export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
     usageLimitText,
     appliesToText,
     minimumRequirementText,
+    maximumRequirementText,
     customerEligibilityText,
     template.appliesOncePerCustomer ? "Yes" : "No",
     purchaseType,
@@ -674,6 +677,13 @@ function formatMinimumRequirementForCSV(minReq) {
   if (!minReq || minReq.mode === "none") return "None";
   if (minReq.mode === "quantity") return `Minimum ${minReq.value} items`;
   if (minReq.mode === "amount") return `Minimum $${minReq.value}`;
+  return "None";
+}
+
+function formatMaximumRequirementForCSV(maxReq) {
+  if (!maxReq || maxReq.mode === "none") return "None";
+  if (maxReq.mode === "quantity") return `Maximum ${maxReq.value} items`;
+  if (maxReq.mode === "amount") return `Maximum $${maxReq.value}`;
   return "None";
 }
 

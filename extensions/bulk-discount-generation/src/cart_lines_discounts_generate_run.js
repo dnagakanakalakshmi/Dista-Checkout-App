@@ -112,6 +112,10 @@ function buildCandidate(configuration, lines, currencyCode, cartAttributeValue) 
     return null;
   }
 
+  if (!meetsMaximumRequirement(configuration, qualifyingLines)) {
+    return null;
+  }
+
   const qualifyingSubtotal = qualifyingLines.reduce(
     (sum, line) => sum + line.subtotal,
     0,
@@ -198,6 +202,30 @@ function meetsMinimumRequirement(configuration, qualifyingLines) {
   return true;
 }
 
+// Mirror of meetsMinimumRequirement, but the discount is rejected once the
+// qualifying total EXCEEDS the configured maximum (e.g. to keep a coupon
+// scoped to small/medium orders only). Scoped to qualifying lines only, same
+// as the minimum check.
+function meetsMaximumRequirement(configuration, qualifyingLines) {
+  const maximumRequirement = configuration.maximumRequirement;
+
+  if (!maximumRequirement || maximumRequirement.mode === 'none') {
+    return true;
+  }
+
+  if (maximumRequirement.mode === 'quantity') {
+    const totalQuantity = qualifyingLines.reduce((sum, line) => sum + line.quantity, 0);
+    return totalQuantity <= maximumRequirement.value;
+  }
+
+  if (maximumRequirement.mode === 'amount') {
+    const totalAmount = qualifyingLines.reduce((sum, line) => sum + line.subtotal, 0);
+    return totalAmount <= maximumRequirement.value;
+  }
+
+  return true;
+}
+
 function normalizeConfigurations(rawConfiguration) {
   if (!rawConfiguration || typeof rawConfiguration !== 'object') {
     return [];
@@ -237,6 +265,7 @@ function normalizeConfiguration(rawDiscount) {
     title: typeof rawDiscount.title === 'string' ? rawDiscount.title.trim() : '',
     appliesTo: normalizeAppliesTo(rawDiscount.appliesTo),
     minimumRequirement: normalizeMinimumRequirement(rawDiscount.minimumRequirement),
+    maximumRequirement: normalizeMaximumRequirement(rawDiscount.maximumRequirement),
     cartAttribute: normalizeCartAttribute(rawDiscount.cartAttribute),
   };
 }
@@ -271,6 +300,21 @@ function normalizeMinimumRequirement(rawMinimumRequirement) {
 
   const mode = rawMinimumRequirement.mode;
   const value = parseMoney(rawMinimumRequirement.value);
+
+  if ((mode !== 'quantity' && mode !== 'amount') || value <= 0) {
+    return {mode: 'none', value: 0};
+  }
+
+  return {mode, value};
+}
+
+function normalizeMaximumRequirement(rawMaximumRequirement) {
+  if (!rawMaximumRequirement || typeof rawMaximumRequirement !== 'object') {
+    return {mode: 'none', value: 0};
+  }
+
+  const mode = rawMaximumRequirement.mode;
+  const value = parseMoney(rawMaximumRequirement.value);
 
   if ((mode !== 'quantity' && mode !== 'amount') || value <= 0) {
     return {mode: 'none', value: 0};

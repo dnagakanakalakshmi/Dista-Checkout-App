@@ -317,6 +317,7 @@ function generateCSV(couponCodes, baseDiscount) {
     'Usage Limit',
     'Applies To',
     'Minimum Requirement',
+    'Maximum Requirement',
     'Customer Eligibility',
     'Applies Once Per Customer',
     'Purchase Type',
@@ -336,6 +337,7 @@ function generateCSV(couponCodes, baseDiscount) {
     baseDiscount.usageLimit ?? 'Unlimited',
     formatAppliesToForCSV(baseDiscount.appliesTo),
     formatMinimumRequirementForCSV(baseDiscount.minimumRequirement),
+    formatMaximumRequirementForCSV(baseDiscount.maximumRequirement),
     formatCustomerEligibilityForCSV(baseDiscount.customerEligibility),
     baseDiscount.appliesOncePerCustomer ? 'Yes' : 'No',
     formatPurchaseTypeForCSV(baseDiscount),
@@ -371,6 +373,13 @@ function formatMinimumRequirementForCSV(minReq) {
   if (!minReq || minReq.mode === 'none') return 'None';
   if (minReq.mode === 'quantity') return `Minimum ${minReq.value} items`;
   if (minReq.mode === 'amount') return `Minimum $${minReq.value}`;
+  return 'None';
+}
+
+function formatMaximumRequirementForCSV(maxReq) {
+  if (!maxReq || maxReq.mode === 'none') return 'None';
+  if (maxReq.mode === 'quantity') return `Maximum ${maxReq.value} items`;
+  if (maxReq.mode === 'amount') return `Maximum $${maxReq.value}`;
   return 'None';
 }
 
@@ -871,6 +880,50 @@ export default function BulkDiscount() {
                           }
                         />
                       )}
+
+                      <s-select
+                        label="Maximum purchase requirement"
+                        name="maximumRequirementMode"
+                        value={formData.maximumRequirement.mode}
+                        onChange={(e) =>
+                          updateFormData("maximumRequirement", { mode: e.target.value, value: "" })
+                        }
+                        helpText="Coupon won't apply if the cart exceeds this."
+                      >
+                        <s-option value="none">None</s-option>
+                        <s-option value="quantity">Maximum quantity of items</s-option>
+                        <s-option value="amount">Maximum purchase amount</s-option>
+                      </s-select>
+
+                      {formData.maximumRequirement.mode === "quantity" && (
+                        <s-number-field
+                          label="Maximum quantity"
+                          name="maximumRequirementValue"
+                          min={1}
+                          step={1}
+                          value={formData.maximumRequirement.value}
+                          onChange={(e) =>
+                            updateFormData("maximumRequirement", {
+                              ...formData.maximumRequirement,
+                              value: e.target.value,
+                            })
+                          }
+                        />
+                      )}
+                      {formData.maximumRequirement.mode === "amount" && (
+                        <s-money-field
+                          label="Maximum purchase amount"
+                          name="maximumRequirementValue"
+                          min={0.01}
+                          value={formData.maximumRequirement.value}
+                          onChange={(e) =>
+                            updateFormData("maximumRequirement", {
+                              ...formData.maximumRequirement,
+                              value: e.target.value,
+                            })
+                          }
+                        />
+                      )}
                     </s-stack>
                   </s-box>
 
@@ -1252,6 +1305,20 @@ if (discountType === "percentage") {
     formData.get("minimumRequirementMode"),
     formData.get("minimumRequirementValue"),
   );
+  const maximumRequirement = normalizeMaximumRequirement(
+    formData.get("maximumRequirementMode"),
+    formData.get("maximumRequirementValue"),
+  );
+
+  if (
+    minimumRequirement.mode !== "none" &&
+    maximumRequirement.mode !== "none" &&
+    minimumRequirement.mode === maximumRequirement.mode &&
+    maximumRequirement.value <= minimumRequirement.value
+  ) {
+    throw new Response("Maximum requirement must be greater than the minimum requirement.", { status: 400 });
+  }
+
   const customerEligibility = normalizeCustomerEligibility(
     formData.get("customerEligibilityMode"),
     formData.get("customerSegmentIds"),
@@ -1285,6 +1352,7 @@ if (discountType === "percentage") {
     },
     appliesTo,
     minimumRequirement,
+    maximumRequirement,
     customerEligibility,
     appliesOnOneTimePurchase: purchaseType.oneTime,
     appliesOnSubscription: purchaseType.subscription,
@@ -1360,6 +1428,20 @@ function normalizeMinimumRequirement(mode, value) {
   return { mode: normalizedMode, value: numericValue };
 }
 
+function normalizeMaximumRequirement(mode, value) {
+  const normalizedMode = mode?.toString().trim() || "none";
+  if (!["none", "quantity", "amount"].includes(normalizedMode)) {
+    throw new Response("Invalid maximum requirement selection.", { status: 400 });
+  }
+  if (normalizedMode === "none") return { mode: "none", value: null };
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    throw new Response("Maximum requirement value must be greater than 0.", { status: 400 });
+  }
+  return { mode: normalizedMode, value: numericValue };
+}
+
 function normalizeCustomerEligibility(mode, segmentIdsCsv, customerIdsCsv) {
   const normalizedMode = mode?.toString().trim() || "all";
   if (!["all", "segments", "customers"].includes(normalizedMode)) {
@@ -1386,6 +1468,7 @@ function toFunctionDiscount(discount) {
     maxDiscountAmount: discount.maxDiscountAmount,
     appliesTo: discount.appliesTo,
     minimumRequirement: discount.minimumRequirement,
+    maximumRequirement: discount.maximumRequirement,
     customerEligibility: discount.customerEligibility,
   };
 }
@@ -1454,6 +1537,10 @@ function createInitialFormData(editingBatch, editingCustomerLabels = []) {
         mode: t.minimumRequirement?.mode || "none",
         value: t.minimumRequirement?.value ?? "",
       },
+      maximumRequirement: {
+        mode: t.maximumRequirement?.mode || "none",
+        value: t.maximumRequirement?.value ?? "",
+      },
       customerEligibility: {
         mode: t.customerEligibility?.mode || "all",
         segmentIds: t.customerEligibility?.segmentIds || [],
@@ -1498,6 +1585,7 @@ function createInitialFormData(editingBatch, editingCustomerLabels = []) {
     },
     appliesTo: { mode: "all", resources: [] },
     minimumRequirement: { mode: "none", value: "" },
+    maximumRequirement: { mode: "none", value: "" },
     customerEligibility: {
       mode: "all",
       segmentIds: [],
