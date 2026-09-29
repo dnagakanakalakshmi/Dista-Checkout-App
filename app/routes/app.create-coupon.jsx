@@ -79,6 +79,9 @@ export const loader = async ({ request }) => {
   const segmentsResponse = await admin.graphql(
     `#graphql
       query DiscountSegments {
+        shop {
+          currencyCode
+        }
         segments(first: 100) {
           nodes {
             id
@@ -89,6 +92,7 @@ export const loader = async ({ request }) => {
   );
   const segmentsJson = await segmentsResponse.json();
   const segments = segmentsJson.data?.segments?.nodes || [];
+  const currencyCode = segmentsJson.data?.shop?.currencyCode || "";
 
 
   // If editing, fetch the coupon data
@@ -198,6 +202,7 @@ export const loader = async ({ request }) => {
     functions,
     selectedFunctionId,
     segments,
+    currencyCode,
     editData,
     isEditing: !!editId,
   };
@@ -415,7 +420,8 @@ function normalizeAppliesToForEdit(appliesTo) {
 }
 
 export default function Index() {
-  const { selectedFunctionId, segments, editData, isEditing } = useLoaderData();
+  const { selectedFunctionId, segments, currencyCode, editData, isEditing } = useLoaderData();
+  const currencySuffix = currencyCode ? ` (${currencyCode})` : "";
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const navigate = useNavigate();
@@ -697,7 +703,7 @@ export default function Index() {
                       {row.discountType !== "free_shipping" && (
                         <s-box inlineSize="49%">
                           <s-number-field
-                            label="Discount value"
+                            label={row.discountType === "fixed" ? `Discount value${currencySuffix}` : "Discount value (%)"}
                             name={`discounts[${index}][discountValue]`}
                             min={0.01}
                             max={row.discountType === "shipping_percentage" ? 100 : undefined}
@@ -715,11 +721,12 @@ export default function Index() {
 
                     {row.discountType === "percentage" && (
                       <s-money-field
-                        label="Maximum discount amount"
+                        label={`Maximum discount amount${currencySuffix}`}
                         name={`discounts[${index}][maxDiscountAmount]`}
                         min={0.01}
                         max={999999}
                         placeholder="100"
+                        helpText="Enter in your store currency. It's converted automatically for customers paying in other currencies."
                         value={row.maxDiscountAmount}
                         onChange={(e) =>
                           updateDiscountRow(row.id, { maxDiscountAmount: e.target.value })
@@ -764,6 +771,18 @@ export default function Index() {
                       </s-box>
                     </s-stack>
 
+
+                    {row.discountType === "fixed" &&
+                      (row.purchaseType === "subscription" || row.purchaseType === "both") && (
+                        <s-banner tone="warning" heading="Flat-amount discounts on subscriptions">
+                          <s-text>
+                            Shopify can apply flat-amount Function discounts incorrectly on subscription
+                            renewal orders for customers paying in a currency other than
+                            {currencyCode ? ` ${currencyCode}` : " your store currency"}. If you sell in
+                            multiple currencies, use a percentage discount for subscription coupons.
+                          </s-text>
+                        </s-banner>
+                      )}
 
                     {/* --- Cart Attributes --- */}
                     {row.appliesTo.mode !== "all" && (
@@ -866,7 +885,7 @@ export default function Index() {
                           )}
                           {row.minimumRequirement.mode === "amount" && (
                             <s-money-field
-                              label="Minimum purchase amount"
+                              label={`Minimum purchase amount${currencySuffix}`}
                               name={`discounts[${index}][minimumRequirementValue]`}
                               min={0.01}
                               value={row.minimumRequirement.value}
@@ -910,7 +929,7 @@ export default function Index() {
                           )}
                           {row.maximumRequirement.mode === "amount" && (
                             <s-money-field
-                              label="Maximum purchase amount"
+                              label={`Maximum purchase amount${currencySuffix}`}
                               name={`discounts[${index}][maximumRequirementValue]`}
                               min={0.01}
                               value={row.maximumRequirement.value}

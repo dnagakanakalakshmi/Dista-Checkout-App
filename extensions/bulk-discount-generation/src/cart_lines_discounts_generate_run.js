@@ -19,9 +19,16 @@ export function cartLinesDiscountsGenerateRun(input) {
   }
 
 
+  // Cart amounts arrive in the buyer's presentment currency, while every
+  // merchant-configured amount (fixed discount value, max cap, min/max
+  // purchase amount) is stored in the store's currency. Convert the
+  // configured amounts once up front so all comparisons and the discount
+  // output below are in the cart's currency.
+  const presentmentCurrencyRate = parsePresentmentCurrencyRate(input.presentmentCurrencyRate);
+
   const configurations = normalizeConfigurations(
     input.discount.metafield?.jsonValue,
-  );
+  ).map((configuration) => toPresentmentCurrency(configuration, presentmentCurrencyRate));
 
   if (!configurations.length) {
     return {operations: []};
@@ -121,7 +128,8 @@ function buildCandidate(configuration, lines, currencyCode, cartAttributeValue) 
     0,
   );
 
-  const discountAmount = calculateDiscountAmount(configuration, qualifyingSubtotal);
+  const decimals = getCurrencyDecimals(currencyCode);
+  const discountAmount = calculateDiscountAmount(configuration, qualifyingSubtotal, decimals);
 
   if (discountAmount <= 0) {
     return null;
@@ -143,15 +151,44 @@ function buildCandidate(configuration, lines, currencyCode, cartAttributeValue) 
         },
       },
     ],
-    value: {
-      fixedAmount: {
-        amount: discountAmount.toFixed(2),
-      },
-    },
+    value: buildDiscountValue(configuration, qualifyingSubtotal, discountAmount, decimals),
   };
 
 
   return candidate;
+}
+
+// Percentage coupons are sent to Shopify as a real percentage whenever the
+// max-discount cap isn't the limiting factor. A percentage is currency-
+// agnostic, so it avoids the shop-currency round-trip rounding Shopify
+// applies to fixedAmount values in other currencies, and it renews
+// correctly on subscription orders. A fixedAmount is only used where it's
+// unavoidable: flat-amount coupons, and percentage coupons whose cap is
+// actually binding for this cart.
+function buildDiscountValue(configuration, qualifyingSubtotal, discountAmount, decimals) {
+  if (configuration.discountType === 'percentage' && configuration.discountValue <= 100) {
+    const uncappedAmount = qualifyingSubtotal * (configuration.discountValue / 100);
+    const capBinds =
+      configuration.maxDiscountAmount > 0 && uncappedAmount > configuration.maxDiscountAmount;
+
+    if (!capBinds) {
+      return {percentage: {value: configuration.discountValue}};
+    }
+  }
+
+  return {fixedAmount: {amount: discountAmount.toFixed(decimals)}};
+}
+
+// Best-effort ISO 4217 minor-unit map. Anything not listed uses 2 decimals.
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+]);
+const THREE_DECIMAL_CURRENCIES = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
+
+function getCurrencyDecimals(currencyCode) {
+  if (ZERO_DECIMAL_CURRENCIES.has(currencyCode)) return 0;
+  if (THREE_DECIMAL_CURRENCIES.has(currencyCode)) return 3;
+  return 2;
 }
 
 // Filters lines down to the ones this configuration's "applies to" setting
@@ -338,7 +375,7 @@ function normalizeCartAttribute(rawCartAttribute) {
   return {mode: 'match', key, value};
 }
 
-function calculateDiscountAmount(configuration, subtotal) {
+function calculateDiscountAmount(configuration, subtotal, decimals = 2) {
   const rawDiscount =
     configuration.discountType === 'percentage'
       ? subtotal * (configuration.discountValue / 100)
@@ -350,22 +387,55 @@ function calculateDiscountAmount(configuration, subtotal) {
     candidates.push(configuration.maxDiscountAmount);
   }
 
-  return roundToCurrency(Math.min(...candidates));
+  return roundToCurrency(Math.min(...candidates), decimals);
 }
 
 function buildMessage(configuration, discountAmount, currencyCode) {
+  const decimals = getCurrencyDecimals(currencyCode);
   const discountLabel =
     configuration.discountType === 'percentage'
       ? `${formatNumber(configuration.discountValue)}% off`
-      : `${currencyCode} ${formatNumber(configuration.discountValue)} off`;
+      : `${currencyCode} ${formatNumber(configuration.discountValue, decimals)} off`;
   const cappedLabel =
     configuration.maxDiscountAmount > 0
-      ? ` up to ${currencyCode} ${formatNumber(configuration.maxDiscountAmount)}`
+      ? ` up to ${currencyCode} ${formatNumber(configuration.maxDiscountAmount, decimals)}`
       : '';
-  const appliedLabel = `applied ${currencyCode} ${formatNumber(discountAmount)}`;
+  const appliedLabel = `applied ${currencyCode} ${formatNumber(discountAmount, decimals)}`;
   const baseMessage = configuration.title || `${discountLabel}${cappedLabel}`;
 
   return `${baseMessage} (${appliedLabel})`;
+}
+
+// Falls back to 1 (no conversion) if the rate is missing or invalid, e.g.
+// if the input query doesn't request presentmentCurrencyRate yet.
+function parsePresentmentCurrencyRate(rawRate) {
+  const rate = Number(rawRate);
+  return Number.isFinite(rate) && rate > 0 ? rate : 1;
+}
+
+// Percentages and quantities are currency-agnostic; only money amounts are
+// scaled: the flat discount value (fixed type), the max discount cap, and
+// amount-mode minimum/maximum purchase requirements.
+function toPresentmentCurrency(configuration, rate) {
+  return {
+    ...configuration,
+    discountValue:
+      configuration.discountType === 'fixed'
+        ? configuration.discountValue * rate
+        : configuration.discountValue,
+    // 0 still means "no cap".
+    maxDiscountAmount: configuration.maxDiscountAmount * rate,
+    minimumRequirement: convertRequirement(configuration.minimumRequirement, rate),
+    maximumRequirement: convertRequirement(configuration.maximumRequirement, rate),
+  };
+}
+
+function convertRequirement(requirement, rate) {
+  if (!requirement || requirement.mode !== 'amount') {
+    return requirement;
+  }
+
+  return {...requirement, value: requirement.value * rate};
 }
 
 function parseMoney(value) {
@@ -373,10 +443,11 @@ function parseMoney(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function roundToCurrency(value) {
-  return Math.round(value * 100) / 100;
+function roundToCurrency(value, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
 
-function formatNumber(value) {
-  return roundToCurrency(value).toFixed(2).replace(/\.00$/, '');
+function formatNumber(value, decimals = 2) {
+  return roundToCurrency(value, decimals).toFixed(decimals).replace(/\.0+$/, '');
 }

@@ -11,6 +11,7 @@ import {
   addRedeemCodesToMaster,
 } from "../models/bulkBatch.server";
 import { graphqlRaw } from "../models/shopifyRawGraphql.server";
+import { getShopCurrencyCode } from "../models/shopCurrency.server";
 
 const CONFIG_NAMESPACE = "$app";
 const CONFIG_KEY = "config";
@@ -39,6 +40,9 @@ export const loader = async ({ request }) => {
   const segmentsResponse = await admin.graphql(
     `#graphql
       query DiscountSegments {
+        shop {
+          currencyCode
+        }
         segments(first: 100) {
           nodes {
             id
@@ -49,6 +53,7 @@ export const loader = async ({ request }) => {
   );
   const segmentsJson = await segmentsResponse.json();
   const segments = segmentsJson.data?.segments?.nodes || [];
+  const currencyCode = segmentsJson.data?.shop?.currencyCode || "";
 
   // If we're editing an existing batch (?batchId=...), load its stored
   // template so the form can be prefilled below.
@@ -82,6 +87,7 @@ export const loader = async ({ request }) => {
     functions,
     selectedFunctionId,
     segments,
+    currencyCode,
     editingBatch,
     editingCustomerLabels,
   };
@@ -137,7 +143,8 @@ async function createNewBatch({ admin, formData, functionId, baseDiscount, shop,
     const { errors } = await addRedeemCodesToMaster(admin, masterDiscountId, remainingCodes);
     generationErrors = errors;
 
-    csvContent = generateCSV(couponCodes, baseDiscount);
+    const currencyCode = await getShopCurrencyCode(admin);
+    csvContent = generateCSV(couponCodes, baseDiscount, currencyCode);
 
     await addBatchRecord(admin, {
       batchId,
@@ -306,7 +313,7 @@ function generateRandomString(length) {
   return result;
 }
 
-function generateCSV(couponCodes, baseDiscount) {
+function generateCSV(couponCodes, baseDiscount, currencyCode = "") {
   if (!couponCodes.length) return '';
 
   const headers = [
@@ -336,8 +343,8 @@ function generateCSV(couponCodes, baseDiscount) {
     baseDiscount.discountType === 'free_shipping' ? '' : baseDiscount.maxDiscountAmount ?? '',
     baseDiscount.usageLimit ?? 'Unlimited',
     formatAppliesToForCSV(baseDiscount.appliesTo),
-    formatMinimumRequirementForCSV(baseDiscount.minimumRequirement),
-    formatMaximumRequirementForCSV(baseDiscount.maximumRequirement),
+    formatMinimumRequirementForCSV(baseDiscount.minimumRequirement, currencyCode),
+    formatMaximumRequirementForCSV(baseDiscount.maximumRequirement, currencyCode),
     formatCustomerEligibilityForCSV(baseDiscount.customerEligibility),
     baseDiscount.appliesOncePerCustomer ? 'Yes' : 'No',
     formatPurchaseTypeForCSV(baseDiscount),
@@ -369,17 +376,17 @@ function formatAppliesToForCSV(appliesTo) {
   return 'All Products';
 }
 
-function formatMinimumRequirementForCSV(minReq) {
+function formatMinimumRequirementForCSV(minReq, currencyCode = '') {
   if (!minReq || minReq.mode === 'none') return 'None';
   if (minReq.mode === 'quantity') return `Minimum ${minReq.value} items`;
-  if (minReq.mode === 'amount') return `Minimum $${minReq.value}`;
+  if (minReq.mode === 'amount') return `Minimum ${currencyCode ? `${currencyCode} ` : ''}${minReq.value}`;
   return 'None';
 }
 
-function formatMaximumRequirementForCSV(maxReq) {
+function formatMaximumRequirementForCSV(maxReq, currencyCode = '') {
   if (!maxReq || maxReq.mode === 'none') return 'None';
   if (maxReq.mode === 'quantity') return `Maximum ${maxReq.value} items`;
-  if (maxReq.mode === 'amount') return `Maximum $${maxReq.value}`;
+  if (maxReq.mode === 'amount') return `Maximum ${currencyCode ? `${currencyCode} ` : ''}${maxReq.value}`;
   return 'None';
 }
 
@@ -492,7 +499,8 @@ function buildCustomerSelectionInput(newEligibility, previousEligibility) {
 }
 
 export default function BulkDiscount() {
-  const { selectedFunctionId, segments, editingBatch, editingCustomerLabels } = useLoaderData();
+  const { selectedFunctionId, segments, currencyCode, editingBatch, editingCustomerLabels } = useLoaderData();
+  const currencySuffix = currencyCode ? ` (${currencyCode})` : "";
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const [searchParams] = useSearchParams();
@@ -744,7 +752,7 @@ export default function BulkDiscount() {
                   {formData.discountType !== "free_shipping" && (
                     <s-box inlineSize="50%">
                       <s-number-field
-                        label="Discount value"
+                        label={formData.discountType === "fixed" ? `Discount value${currencySuffix}` : "Discount value (%)"}
                         name="discountValue"
                         min={0.01}
                         step={0.01}
@@ -760,11 +768,12 @@ export default function BulkDiscount() {
 
                 {formData.discountType === "percentage" && (
                   <s-money-field
-                    label="Maximum discount amount"
+                    label={`Maximum discount amount${currencySuffix}`}
                     name="maxDiscountAmount"
                     min={0.01}
                     max={999999}
                     placeholder="100"
+                    helpText="Enter in your store currency. It's converted automatically for customers paying in other currencies."
                     value={formData.maxDiscountAmount}
                     onChange={(e) => updateFormData("maxDiscountAmount", e.target.value)}
                     required
@@ -803,6 +812,18 @@ export default function BulkDiscount() {
                     </s-select>
                   </s-box>
                 </s-stack>
+
+                {formData.discountType === "fixed" &&
+                  (purchaseType === "subscription" || purchaseType === "both") && (
+                    <s-banner tone="warning" heading="Flat-amount discounts on subscriptions">
+                      <s-text>
+                        Shopify can apply flat-amount Function discounts incorrectly on subscription
+                        renewal orders for customers paying in a currency other than
+                        {currencyCode ? ` ${currencyCode}` : " your store currency"}. If you sell in
+                        multiple currencies, use a percentage discount for subscription coupons.
+                      </s-text>
+                    </s-banner>
+                  )}
 
                 {formData.appliesTo.mode !== "all" && (
                   <s-stack direction="block" gap="tight">
@@ -868,7 +889,7 @@ export default function BulkDiscount() {
                       )}
                       {formData.minimumRequirement.mode === "amount" && (
                         <s-money-field
-                          label="Minimum purchase amount"
+                          label={`Minimum purchase amount${currencySuffix}`}
                           name="minimumRequirementValue"
                           min={0.01}
                           value={formData.minimumRequirement.value}
@@ -912,7 +933,7 @@ export default function BulkDiscount() {
                       )}
                       {formData.maximumRequirement.mode === "amount" && (
                         <s-money-field
-                          label="Maximum purchase amount"
+                          label={`Maximum purchase amount${currencySuffix}`}
                           name="maximumRequirementValue"
                           min={0.01}
                           value={formData.maximumRequirement.value}
@@ -1609,5 +1630,5 @@ function formatTimeForInput(value) {
 }
 
 export const headers = (headersArgs) => {
-  return boundary.headers(headersArgs);
+  return boundary.headers(headersArgs);c
 };

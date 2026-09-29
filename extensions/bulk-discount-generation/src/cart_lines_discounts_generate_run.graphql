@@ -1,4 +1,5 @@
 query CartInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
+  presentmentCurrencyRate
   cart {
     attribute(key: $cartAttributeKey) {
       value
