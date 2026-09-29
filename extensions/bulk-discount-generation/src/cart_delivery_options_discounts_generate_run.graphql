@@ -1,4 +1,5 @@
 query DeliveryInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
+  presentmentCurrencyRate
   cart {
     attribute(key: $cartAttributeKey) {
       value
@@ -14,6 +15,9 @@ query DeliveryInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
         subtotalAmount {
           amount
         }
+      }
+      autoGiftAttribute: attribute(key: "_auto_gift") {
+        value
       }
       merchandise {
         ... on ProductVariant {

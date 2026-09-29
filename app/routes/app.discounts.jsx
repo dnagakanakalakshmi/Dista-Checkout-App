@@ -16,6 +16,7 @@ import {
   removeCouponFromRegistry,
   removeCouponsFromRegistry,
 } from "../models/couponRegistry.server";
+import { getShopCurrencyCode } from "../models/shopCurrency.server";
 
 const PAGE_SIZE = 10;
 
@@ -36,11 +37,13 @@ export const loader = async ({ request }) => {
 
   const batches = await reconcileBatchRegistry(admin);
   const liveNodes = await reconcileCouponRegistry(admin);
+  const currencyCode = await getShopCurrencyCode(admin);
 
   const coupons = formatCoupons(liveNodes);
 
   return {
     coupons,
+    currencyCode,
     batches: batches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
   };
 };
@@ -198,13 +201,14 @@ if (intent === "setCouponStatus") {
     // the master discount, and the full live code list paginated off its
     // codes connection — never the registry's cached couponCodes/count,
     // which can drift if codes were ever touched outside the app.
-    const [liveMasters, liveCodes] = await Promise.all([
+    const [liveMasters, liveCodes, currencyCode] = await Promise.all([
       fetchLiveMasters(admin, [batch.masterDiscountId]),
       fetchLiveCodesForBatch(admin, batch.masterDiscountId),
+      getShopCurrencyCode(admin),
     ]);
     const liveStatus = liveMasters[0]?.status || null;
 
-    const csvContent = generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus);
+    const csvContent = generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus, currencyCode);
     return {
       intent: "exportBatch",
       csvContent,
@@ -225,6 +229,7 @@ export default function Dashboard() {
   const data = useLoaderData();
   const coupons = data?.coupons ?? [];
   const batches = data?.batches ?? [];
+  const currencyCode = data?.currencyCode ?? "";
 
   const fetcher = useFetcher();
   const shopify = useAppBridge();
@@ -682,8 +687,8 @@ export default function Dashboard() {
                         </s-table-cell>
                         <s-table-cell>{batch.count}</s-table-cell>
                         <s-table-cell>{batch.prefix || "—"}</s-table-cell>
-                        <s-table-cell>{formatBatchValue(batch.template)}</s-table-cell>
-                        <s-table-cell>{formatBatchMaxCap(batch.template)}</s-table-cell>
+                        <s-table-cell>{formatBatchValue(batch.template, currencyCode)}</s-table-cell>
+                        <s-table-cell>{formatBatchMaxCap(batch.template, currencyCode)}</s-table-cell>
                         <s-table-cell>
                           <s-stack direction="inline" gap="base">
                             <s-button
@@ -857,10 +862,10 @@ export default function Dashboard() {
                           ? "Free Shipping"
                           : coupon.discountType === "shipping_percentage"
                           ? `${coupon.discountValue}% off shipping`
-                          : `$${coupon.discountValue}`}
+                          : formatMoney(coupon.discountValue, currencyCode)}
                       </s-table-cell>
                       <s-table-cell>
-                        {coupon.maxDiscountAmount ? `$${coupon.maxDiscountAmount}` : "—"}
+                        {coupon.maxDiscountAmount ? formatMoney(coupon.maxDiscountAmount, currencyCode) : "—"}
                       </s-table-cell>
                       <s-table-cell>
                         <s-badge
@@ -1099,26 +1104,30 @@ function formatDateForDisplay(value) {
   }).format(new Date(value));
 }
 
-function formatBatchValue(template) {
+function formatMoney(amount, currencyCode) {
+  if (amount === null || amount === undefined || amount === "") return "—";
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
+  if (!currencyCode) return String(value);
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).format(value);
+  } catch {
+    return `${currencyCode} ${value}`;
+  }
+}
+
+function formatBatchValue(template, currencyCode) {
   if (!template) return "—";
   if (template.discountType === "free_shipping") return "Free Shipping";
   if (template.discountType === "percentage") return `${template.discountValue}%`;
-  if (template.discountType === "fixed") return `$${template.discountValue}`;
+  if (template.discountType === "fixed") return formatMoney(template.discountValue, currencyCode);
   if (template.discountType === "shipping_percentage") return `${template.discountValue}% off shipping`;
   return "—";
 }
 
-// Separate column from formatBatchValue on purpose — the discount % or
-// flat amount and its cap are two different numbers a merchant scans for
-// independently in this table, so collapsing them into one string (e.g.
-// "15% (capped at $500)") made the column harder to scan at a glance.
-function formatBatchMaxCap(template) {
-  if (!template) return "—";
-  if (template.discountType === "free_shipping") return "—";
-  if (template.maxDiscountAmount === null || template.maxDiscountAmount === undefined || template.maxDiscountAmount === "") {
-    return "—";
-  }
-  return `$${template.maxDiscountAmount}`;
+function formatBatchMaxCap(template, currencyCode) {
+  if (!template || template.discountType === "free_shipping") return "—";
+  return formatMoney(template.maxDiscountAmount, currencyCode);
 }
 
 export const headers = (headersArgs) => {

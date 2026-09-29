@@ -79,6 +79,9 @@ export const loader = async ({ request }) => {
   const segmentsResponse = await admin.graphql(
     `#graphql
       query DiscountSegments {
+        shop {
+          currencyCode
+        }
         segments(first: 100) {
           nodes {
             id
@@ -89,6 +92,7 @@ export const loader = async ({ request }) => {
   );
   const segmentsJson = await segmentsResponse.json();
   const segments = segmentsJson.data?.segments?.nodes || [];
+  const currencyCode = segmentsJson.data?.shop?.currencyCode || "";
 
 
   // If editing, fetch the coupon data
@@ -178,6 +182,7 @@ export const loader = async ({ request }) => {
         maxDiscountAmount: displayConfig?.maxDiscountAmount || "",
         appliesTo: normalizeAppliesToForEdit(displayConfig?.appliesTo),
         minimumRequirement: displayConfig?.minimumRequirement || { mode: "none", value: "" },
+        maximumRequirement: displayConfig?.maximumRequirement || { mode: "none", value: "" },
         cartAttribute: displayConfig?.cartAttribute || { key: "", value: "" },
         purchaseType: purchaseType,
         recurringCycleLimit: node.discount.recurringCycleLimit || 0,
@@ -197,6 +202,7 @@ export const loader = async ({ request }) => {
     functions,
     selectedFunctionId,
     segments,
+    currencyCode,
     editData,
     isEditing: !!editId,
   };
@@ -414,7 +420,8 @@ function normalizeAppliesToForEdit(appliesTo) {
 }
 
 export default function Index() {
-  const { selectedFunctionId, segments, editData, isEditing } = useLoaderData();
+  const { selectedFunctionId, segments, currencyCode, editData, isEditing } = useLoaderData();
+  const currencySuffix = currencyCode ? ` (${currencyCode})` : "";
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const navigate = useNavigate();
@@ -441,6 +448,7 @@ export default function Index() {
         },
         appliesTo: editData.appliesTo || { mode: "all", resources: [] },
         minimumRequirement: editData.minimumRequirement || { mode: "none", value: "" },
+        maximumRequirement: editData.maximumRequirement || { mode: "none", value: "" },
         customerEligibility: editData.customerEligibility || {
           mode: "all",
           segmentIds: [],
@@ -520,6 +528,7 @@ export default function Index() {
         customerEligibility: coupon.customerEligibility,
         appliesTo: coupon.appliesTo,
         minimumRequirement: coupon.minimumRequirement,
+        maximumRequirement: coupon.maximumRequirement,
         purchaseType: coupon.purchaseType,
         recurringPaymentLimit: coupon.recurringPaymentLimit,
         cartAttribute: coupon.cartAttribute,
@@ -694,7 +703,7 @@ export default function Index() {
                       {row.discountType !== "free_shipping" && (
                         <s-box inlineSize="49%">
                           <s-number-field
-                            label="Discount value"
+                            label={row.discountType === "fixed" ? `Discount value${currencySuffix}` : "Discount value (%)"}
                             name={`discounts[${index}][discountValue]`}
                             min={0.01}
                             max={row.discountType === "shipping_percentage" ? 100 : undefined}
@@ -711,12 +720,14 @@ export default function Index() {
                     </s-stack>
 
                     {row.discountType === "percentage" && (
-                      <s-money-field
-                        label="Maximum discount amount"
+                      <s-number-field
+                        label={`Maximum discount amount${currencySuffix}`}
                         name={`discounts[${index}][maxDiscountAmount]`}
                         min={0.01}
                         max={999999}
+                        step={0.01}
                         placeholder="100"
+                        helpText="Enter in your store currency. It's converted automatically for customers paying in other currencies."
                         value={row.maxDiscountAmount}
                         onChange={(e) =>
                           updateDiscountRow(row.id, { maxDiscountAmount: e.target.value })
@@ -761,6 +772,18 @@ export default function Index() {
                       </s-box>
                     </s-stack>
 
+
+                    {row.discountType === "fixed" &&
+                      (row.purchaseType === "subscription" || row.purchaseType === "both") && (
+                        <s-banner tone="warning" heading="Flat-amount discounts on subscriptions">
+                          <s-text>
+                            Shopify can apply flat-amount Function discounts incorrectly on subscription
+                            renewal orders for customers paying in a currency other than
+                            {currencyCode ? ` ${currencyCode}` : " your store currency"}. If you sell in
+                            multiple currencies, use a percentage discount for subscription coupons.
+                          </s-text>
+                        </s-banner>
+                      )}
 
                     {/* --- Cart Attributes --- */}
                     {row.appliesTo.mode !== "all" && (
@@ -862,14 +885,60 @@ export default function Index() {
                             />
                           )}
                           {row.minimumRequirement.mode === "amount" && (
-                            <s-money-field
-                              label="Minimum purchase amount"
+                            <s-number-field
+                              label={`Minimum purchase amount${currencySuffix}`}
                               name={`discounts[${index}][minimumRequirementValue]`}
                               min={0.01}
+                              step={0.01}
                               value={row.minimumRequirement.value}
                               onChange={(e) =>
                                 updateDiscountRow(row.id, {
                                   minimumRequirement: { ...row.minimumRequirement, value: e.target.value },
+                                })
+                              }
+                            />
+                          )}
+
+                          <s-select
+                            label="Maximum purchase requirement"
+                            name={`discounts[${index}][maximumRequirementMode]`}
+                            value={row.maximumRequirement.mode}
+                            onChange={(e) =>
+                              updateDiscountRow(row.id, {
+                                maximumRequirement: { mode: e.target.value, value: "" },
+                              })
+                            }
+                            helpText="Coupon won't apply if the cart exceeds this."
+                          >
+                            <s-option value="none">None</s-option>
+                            <s-option value="quantity">Maximum quantity of items</s-option>
+                            <s-option value="amount">Maximum purchase amount</s-option>
+                          </s-select>
+
+                          {row.maximumRequirement.mode === "quantity" && (
+                            <s-number-field
+                              label="Maximum quantity"
+                              name={`discounts[${index}][maximumRequirementValue]`}
+                              min={1}
+                              step={1}
+                              value={row.maximumRequirement.value}
+                              onChange={(e) =>
+                                updateDiscountRow(row.id, {
+                                  maximumRequirement: { ...row.maximumRequirement, value: e.target.value },
+                                })
+                              }
+                            />
+                          )}
+                          {row.maximumRequirement.mode === "amount" && (
+                            <s-number-field
+                              label={`Maximum purchase amount${currencySuffix}`}
+                              name={`discounts[${index}][maximumRequirementValue]`}
+                              min={0.01}
+                              step={0.01}
+                              value={row.maximumRequirement.value}
+                              onChange={(e) =>
+                                updateDiscountRow(row.id, {
+                                  maximumRequirement: { ...row.maximumRequirement, value: e.target.value },
                                 })
                               }
                             />
@@ -1287,6 +1356,8 @@ function parseFormDiscounts(formData) {
         appliesToTitles: formData.get(`discounts[${index}][appliesToTitles]`),
         minimumRequirementMode: formData.get(`discounts[${index}][minimumRequirementMode]`),
         minimumRequirementValue: formData.get(`discounts[${index}][minimumRequirementValue]`),
+        maximumRequirementMode: formData.get(`discounts[${index}][maximumRequirementMode]`),
+        maximumRequirementValue: formData.get(`discounts[${index}][maximumRequirementValue]`),
         customerEligibilityMode: formData.get(`discounts[${index}][customerEligibilityMode]`),
         customerSegmentIds: formData.get(`discounts[${index}][customerSegmentIds]`),
         customerIds: formData.get(`discounts[${index}][customerIds]`),
@@ -1380,6 +1451,23 @@ function normalizeDiscount(rawDiscount, label) {
     rawDiscount.minimumRequirementValue,
     label,
   );
+  const maximumRequirement = normalizeMaximumRequirement(
+    rawDiscount.maximumRequirementMode,
+    rawDiscount.maximumRequirementValue,
+    label,
+  );
+
+  if (
+    minimumRequirement.mode !== "none" &&
+    maximumRequirement.mode !== "none" &&
+    minimumRequirement.mode === maximumRequirement.mode &&
+    maximumRequirement.value <= minimumRequirement.value
+  ) {
+    throw new Response(`${label}: maximum requirement must be greater than the minimum requirement.`, {
+      status: 400,
+    });
+  }
+
   const customerEligibility = normalizeCustomerEligibility(
     rawDiscount.customerEligibilityMode,
     rawDiscount.customerSegmentIds,
@@ -1420,6 +1508,7 @@ function normalizeDiscount(rawDiscount, label) {
     },
     appliesTo,
     minimumRequirement,
+    maximumRequirement,
     customerEligibility,
     cartAttribute,
     appliesOnOneTimePurchase: purchaseType.oneTime,
@@ -1539,6 +1628,28 @@ function normalizeMinimumRequirement(mode, value, label) {
   return { mode: normalizedMode, value: numericValue };
 }
 
+function normalizeMaximumRequirement(mode, value, label) {
+  const normalizedMode = mode?.toString().trim() || "none";
+
+  if (!["none", "quantity", "amount"].includes(normalizedMode)) {
+    throw new Response(`${label}: invalid maximum requirement selection.`, { status: 400 });
+  }
+
+  if (normalizedMode === "none") {
+    return { mode: "none", value: null };
+  }
+
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    throw new Response(`${label}: maximum requirement value must be greater than 0.`, {
+      status: 400,
+    });
+  }
+
+  return { mode: normalizedMode, value: numericValue };
+}
+
 function normalizeCustomerEligibility(mode, segmentIdsCsv, customerIdsCsv, customerLabelsJson, label) {
   const normalizedMode = mode?.toString().trim() || "all";
 
@@ -1585,6 +1696,7 @@ function toFunctionDiscount(discount) {
     maxDiscountAmount: discount.maxDiscountAmount,
     appliesTo: discount.appliesTo,
     minimumRequirement: discount.minimumRequirement,
+    maximumRequirement: discount.maximumRequirement,
     customerEligibility: discount.customerEligibility,
     cartAttribute: discount.cartAttribute,
   };
@@ -1611,6 +1723,7 @@ function createDiscountRow(values = {}) {
     },
     appliesTo: values.appliesTo || { mode: "all", resources: [] },
     minimumRequirement: values.minimumRequirement || { mode: "none", value: "" },
+    maximumRequirement: values.maximumRequirement || { mode: "none", value: "" },
     customerEligibility: values.customerEligibility || {
       mode: "all",
       segmentIds: [],
@@ -1641,6 +1754,7 @@ function formatActionCoupon(codeAppDiscount, discountConfig) {
     maxDiscountAmount: discountConfig.maxDiscountAmount,
     appliesTo: discountConfig.appliesTo,
     minimumRequirement: discountConfig.minimumRequirement,
+    maximumRequirement: discountConfig.maximumRequirement,
     cartAttribute: discountConfig.cartAttribute,
     purchaseType:
       (codeAppDiscount.appliesOnOneTimePurchase ?? discountConfig.appliesOnOneTimePurchase) &&

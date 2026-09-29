@@ -44,6 +44,10 @@ export function cartDeliveryOptionsDiscountsGenerateRun(input) {
     return {operations: []};
   }
 
+  if (!meetsMaximumRequirement(shippingConfig, qualifyingLines)) {
+    return {operations: []};
+  }
+
   return {
     operations: [
       {
@@ -103,17 +107,25 @@ function normalizeCartAttribute(rawCartAttribute) {
 // this function actually needs (no productId-based "products" mode here
 // since appliesTo for free shipping is checked at cart level, see note
 // in selectQualifyingLines).
-function annotateLines(rawLines) {
-  return rawLines.map((line) => {
-    const product = line.merchandise?.product ?? null;
+const AUTO_GIFT_VALUE = 'true';
 
-    return {
-      quantity: line.quantity,
-      subtotal: parseMoney(line.cost.subtotalAmount.amount),
-      productId: product?.id ?? null,
-      inAnyCollection: Boolean(product?.inAnyCollection),
-    };
-  });
+function isAutoGiftLine(line) {
+  return line?.autoGiftAttribute?.value === AUTO_GIFT_VALUE;
+}
+
+function annotateLines(rawLines) {
+  return rawLines
+    .filter((line) => !isAutoGiftLine(line))
+    .map((line) => {
+      const product = line.merchandise?.product ?? null;
+
+      return {
+        quantity: line.quantity,
+        subtotal: parseMoney(line.cost.subtotalAmount.amount),
+        productId: product?.id ?? null,
+        inAnyCollection: Boolean(product?.inAnyCollection),
+      };
+    });
 }
 
 // Mirrors selectQualifyingLines in the order discount function.
@@ -157,6 +169,32 @@ function meetsMinimumRequirement(configuration, qualifyingLines) {
   return true;
 }
 
+// Mirrors meetsMaximumRequirement in the order discount function: the
+// shipping discount is rejected once the qualifying total EXCEEDS the
+// configured maximum. Without this, a maximumRequirement set on a
+// free_shipping/shipping_percentage coupon (both jsx routes pass it
+// through for every discount type) would be silently ignored here even
+// though it's enforced on the order-discount path.
+function meetsMaximumRequirement(configuration, qualifyingLines) {
+  const maximumRequirement = configuration.maximumRequirement;
+
+  if (!maximumRequirement || maximumRequirement.mode === 'none') {
+    return true;
+  }
+
+  if (maximumRequirement.mode === 'quantity') {
+    const totalQuantity = qualifyingLines.reduce((sum, line) => sum + line.quantity, 0);
+    return totalQuantity <= maximumRequirement.value;
+  }
+
+  if (maximumRequirement.mode === 'amount') {
+    const totalAmount = qualifyingLines.reduce((sum, line) => sum + line.subtotal, 0);
+    return totalAmount <= maximumRequirement.value;
+  }
+
+  return true;
+}
+
 function normalizeConfigurations(rawConfiguration) {
   if (!rawConfiguration || typeof rawConfiguration !== 'object') {
     return [];
@@ -175,6 +213,7 @@ function normalizeConfigurations(rawConfiguration) {
       title: typeof discount.title === 'string' ? discount.title.trim() : '',
       appliesTo: normalizeAppliesTo(discount.appliesTo),
       minimumRequirement: normalizeMinimumRequirement(discount.minimumRequirement),
+      maximumRequirement: normalizeMaximumRequirement(discount.maximumRequirement),
       cartAttribute: normalizeCartAttribute(discount.cartAttribute),
     }));
 
@@ -217,6 +256,21 @@ function normalizeMinimumRequirement(rawMinimumRequirement) {
 
   const mode = rawMinimumRequirement.mode;
   const value = parseMoney(rawMinimumRequirement.value);
+
+  if ((mode !== 'quantity' && mode !== 'amount') || value <= 0) {
+    return {mode: 'none', value: 0};
+  }
+
+  return {mode, value};
+}
+
+function normalizeMaximumRequirement(rawMaximumRequirement) {
+  if (!rawMaximumRequirement || typeof rawMaximumRequirement !== 'object') {
+    return {mode: 'none', value: 0};
+  }
+
+  const mode = rawMaximumRequirement.mode;
+  const value = parseMoney(rawMaximumRequirement.value);
 
   if ((mode !== 'quantity' && mode !== 'amount') || value <= 0) {
     return {mode: 'none', value: 0};

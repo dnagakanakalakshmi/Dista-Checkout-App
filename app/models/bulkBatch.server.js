@@ -220,11 +220,12 @@ export async function reconcileBatchRegistry(admin) {
  * should always reflect what's true right now, not what was true at
  * generation/last-reconcile time.
  */
-export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
+export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus, currencyCode = "") {
   const template = batch.template || {};
 
   const appliesToText = formatAppliesToForCSV(template.appliesTo);
-  const minimumRequirementText = formatMinimumRequirementForCSV(template.minimumRequirement);
+  const minimumRequirementText = formatMinimumRequirementForCSV(template.minimumRequirement, currencyCode);
+  const maximumRequirementText = formatMaximumRequirementForCSV(template.maximumRequirement, currencyCode);
   const customerEligibilityText = formatCustomerEligibilityForCSV(template.customerEligibility);
   const tagsText = (template.tags || []).join("; ");
   const discountTypeText = template.discountType || "";
@@ -255,6 +256,7 @@ export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
     "Usage Limit",
     "Applies To",
     "Minimum Requirement",
+    "Maximum Requirement",
     "Customer Eligibility",
     "Applies Once Per Customer",
     "Purchase Type",
@@ -276,6 +278,7 @@ export function generateCSVFromLiveDiscounts(batch, liveCodes, liveStatus) {
     usageLimitText,
     appliesToText,
     minimumRequirementText,
+    maximumRequirementText,
     customerEligibilityText,
     template.appliesOncePerCustomer ? "Yes" : "No",
     purchaseType,
@@ -670,10 +673,17 @@ function formatAppliesToForCSV(appliesTo) {
   return "All Products";
 }
 
-function formatMinimumRequirementForCSV(minReq) {
+function formatMinimumRequirementForCSV(minReq, currencyCode = "") {
   if (!minReq || minReq.mode === "none") return "None";
   if (minReq.mode === "quantity") return `Minimum ${minReq.value} items`;
-  if (minReq.mode === "amount") return `Minimum $${minReq.value}`;
+  if (minReq.mode === "amount") return `Minimum ${currencyCode ? `${currencyCode} ` : ""}${minReq.value}`;
+  return "None";
+}
+
+function formatMaximumRequirementForCSV(maxReq, currencyCode = "") {
+  if (!maxReq || maxReq.mode === "none") return "None";
+  if (maxReq.mode === "quantity") return `Maximum ${maxReq.value} items`;
+  if (maxReq.mode === "amount") return `Maximum ${currencyCode ? `${currencyCode} ` : ""}${maxReq.value}`;
   return "None";
 }
 
