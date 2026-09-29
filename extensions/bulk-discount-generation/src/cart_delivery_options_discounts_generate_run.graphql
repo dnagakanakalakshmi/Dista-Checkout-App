@@ -16,6 +16,9 @@ query DeliveryInput($collectionIds: [ID!], $cartAttributeKey: String! = "") {
           amount
         }
       }
+      autoGiftAttribute: attribute(key: "_auto_gift") {
+        value
+      }
       merchandise {
         ... on ProductVariant {
           product {

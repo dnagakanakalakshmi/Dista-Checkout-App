@@ -67,6 +67,12 @@ export function cartLinesDiscountsGenerateRun(input) {
 // __typename === 'ProductVariant', and doesn't depend on __typename being
 // present in the resolved input (it isn't always echoed back, e.g. in some
 // function-runner test payloads).
+const AUTO_GIFT_VALUE = 'true';
+
+function isAutoGiftLine(line) {
+  return line?.autoGiftAttribute?.value === AUTO_GIFT_VALUE;
+}
+
 function annotateLines(rawLines) {
   return rawLines.map((line) => {
     const product = line.merchandise?.product ?? null;
@@ -77,6 +83,7 @@ function annotateLines(rawLines) {
       subtotal: parseMoney(line.cost.subtotalAmount.amount),
       productId: product?.id ?? null,
       inAnyCollection: Boolean(product?.inAnyCollection),
+      isAutoGift: isAutoGiftLine(line),
     };
   });
 }
@@ -195,25 +202,28 @@ function getCurrencyDecimals(currencyCode) {
 // allows. mode "all" qualifies every line; "products"/"collections" qualify
 // only lines whose product matches the stored resource ids.
 function selectQualifyingLines(configuration, lines) {
+  // Free gifts are not purchased items — they must not count toward
+  // min/max quantity or amount, and they must not receive the coupon.
+  const purchasedLines = lines.filter((line) => !line.isAutoGift);
   const appliesTo = configuration.appliesTo;
 
   if (!appliesTo || appliesTo.mode === 'all') {
-    return lines;
+    return purchasedLines;
   }
 
   if (appliesTo.mode === 'products') {
     const productIds = new Set(appliesTo.resourceIds);
-    return lines.filter((line) => line.productId && productIds.has(line.productId));
+    return purchasedLines.filter((line) => line.productId && productIds.has(line.productId));
   }
 
   if (appliesTo.mode === 'collections') {
     // inAnyCollection was resolved by Shopify against the $collectionIds
     // input query variable, which is populated from this discount's own
     // "$app:collection-ids" metafield — see shopify.extension.toml.
-    return lines.filter((line) => line.inAnyCollection);
+    return purchasedLines.filter((line) => line.inAnyCollection);
   }
 
-  return lines;
+  return purchasedLines;
 }
 
 // Checks the minimum purchase requirement against ONLY the qualifying lines,

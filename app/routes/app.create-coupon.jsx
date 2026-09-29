@@ -720,11 +720,12 @@ export default function Index() {
                     </s-stack>
 
                     {row.discountType === "percentage" && (
-                      <s-money-field
+                      <s-number-field
                         label={`Maximum discount amount${currencySuffix}`}
                         name={`discounts[${index}][maxDiscountAmount]`}
                         min={0.01}
                         max={999999}
+                        step={0.01}
                         placeholder="100"
                         helpText="Enter in your store currency. It's converted automatically for customers paying in other currencies."
                         value={row.maxDiscountAmount}
@@ -884,10 +885,11 @@ export default function Index() {
                             />
                           )}
                           {row.minimumRequirement.mode === "amount" && (
-                            <s-money-field
+                            <s-number-field
                               label={`Minimum purchase amount${currencySuffix}`}
                               name={`discounts[${index}][minimumRequirementValue]`}
                               min={0.01}
+                              step={0.01}
                               value={row.minimumRequirement.value}
                               onChange={(e) =>
                                 updateDiscountRow(row.id, {
@@ -928,10 +930,11 @@ export default function Index() {
                             />
                           )}
                           {row.maximumRequirement.mode === "amount" && (
-                            <s-money-field
+                            <s-number-field
                               label={`Maximum purchase amount${currencySuffix}`}
                               name={`discounts[${index}][maximumRequirementValue]`}
                               min={0.01}
+                              step={0.01}
                               value={row.maximumRequirement.value}
                               onChange={(e) =>
                                 updateDiscountRow(row.id, {

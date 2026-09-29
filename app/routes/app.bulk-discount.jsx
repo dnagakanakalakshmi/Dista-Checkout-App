@@ -767,11 +767,12 @@ export default function BulkDiscount() {
                 </s-stack>
 
                 {formData.discountType === "percentage" && (
-                  <s-money-field
+                  <s-number-field
                     label={`Maximum discount amount${currencySuffix}`}
                     name="maxDiscountAmount"
                     min={0.01}
                     max={999999}
+                    step={0.01}
                     placeholder="100"
                     helpText="Enter in your store currency. It's converted automatically for customers paying in other currencies."
                     value={formData.maxDiscountAmount}
@@ -888,10 +889,11 @@ export default function BulkDiscount() {
                         />
                       )}
                       {formData.minimumRequirement.mode === "amount" && (
-                        <s-money-field
+                        <s-number-field
                           label={`Minimum purchase amount${currencySuffix}`}
                           name="minimumRequirementValue"
                           min={0.01}
+                          step={0.01}
                           value={formData.minimumRequirement.value}
                           onChange={(e) =>
                             updateFormData("minimumRequirement", {
@@ -932,10 +934,11 @@ export default function BulkDiscount() {
                         />
                       )}
                       {formData.maximumRequirement.mode === "amount" && (
-                        <s-money-field
+                        <s-number-field
                           label={`Maximum purchase amount${currencySuffix}`}
                           name="maximumRequirementValue"
                           min={0.01}
+                          step={0.01}
                           value={formData.maximumRequirement.value}
                           onChange={(e) =>
                             updateFormData("maximumRequirement", {

@@ -107,17 +107,25 @@ function normalizeCartAttribute(rawCartAttribute) {
 // this function actually needs (no productId-based "products" mode here
 // since appliesTo for free shipping is checked at cart level, see note
 // in selectQualifyingLines).
-function annotateLines(rawLines) {
-  return rawLines.map((line) => {
-    const product = line.merchandise?.product ?? null;
+const AUTO_GIFT_VALUE = 'true';
 
-    return {
-      quantity: line.quantity,
-      subtotal: parseMoney(line.cost.subtotalAmount.amount),
-      productId: product?.id ?? null,
-      inAnyCollection: Boolean(product?.inAnyCollection),
-    };
-  });
+function isAutoGiftLine(line) {
+  return line?.autoGiftAttribute?.value === AUTO_GIFT_VALUE;
+}
+
+function annotateLines(rawLines) {
+  return rawLines
+    .filter((line) => !isAutoGiftLine(line))
+    .map((line) => {
+      const product = line.merchandise?.product ?? null;
+
+      return {
+        quantity: line.quantity,
+        subtotal: parseMoney(line.cost.subtotalAmount.amount),
+        productId: product?.id ?? null,
+        inAnyCollection: Boolean(product?.inAnyCollection),
+      };
+    });
 }
 
 // Mirrors selectQualifyingLines in the order discount function.
