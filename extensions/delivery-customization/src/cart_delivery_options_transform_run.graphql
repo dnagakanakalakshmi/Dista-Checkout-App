@@ -39,16 +39,16 @@ query CartDeliveryOptionsTransformRunInput {
       date
     }
     metafield(namespace: "distacart", key: "delivery_templates") {
-      value
+      jsonValue
     }
     readyToShipRegular: metafield(namespace: "distacart", key: "ready_to_ship_regular") {
-      value
+      jsonValue
     }
     readyToShipOnlineOrders: metafield(namespace: "distacart", key: "ready_to_ship_online_orders") {
-      value
+      jsonValue
     }
     fallbackDispatchDays: metafield(namespace: "distacart", key: "estimated_delivery_fallback_days") {
-      value
+      jsonValue
     }
   }
 }

@@ -86,6 +86,45 @@ function resolveMetafieldTiers(doc, variantKey, countryCode) {
   };
 }
 
+function readDiscountConfig(metafield) {
+  const raw = metafield?.jsonValue ?? metafield?.value;
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function configForLine(line, configCache) {
+  const productId = line.merchandise?.product?.id || line.merchandise?.id;
+  if (!productId) {
+    return readDiscountConfig(line.merchandise?.product?.quantityDiscounts);
+  }
+
+  if (configCache.has(productId)) return configCache.get(productId);
+
+  const parsed = readDiscountConfig(line.merchandise?.product?.quantityDiscounts);
+  configCache.set(productId, parsed);
+  return parsed;
+}
+
+function tiersForLine(line, countryCode, configCache, tierCache) {
+  const variantId = line.merchandise?.id || '';
+  const productId = line.merchandise?.product?.id || variantId;
+  const cacheKey = `${productId}|${variantId}|${countryCode || ''}`;
+
+  if (tierCache.has(cacheKey)) return tierCache.get(cacheKey);
+
+  const parsed = configForLine(line, configCache);
+  const tiers = parsed ? getLineTiers(parsed, variantId, countryCode) : [];
+  tierCache.set(cacheKey, tiers);
+  return tiers;
+}
+
 function getLineTiers(doc, variantId, countryCode) {
   const legacyVariantId = parseLegacyVariantId(variantId);
   const resolvedLegacy = resolveMetafieldTiers(
@@ -205,6 +244,8 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   const countryCode = normalizeCountry(input.localization?.country?.isoCode);
   const candidates = [];
+  const configCache = new Map();
+  const tierCache = new Map();
 
   for (const line of input.cart.lines) {
     const variantId = line.merchandise?.id;
@@ -215,19 +256,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
     // if (!variantIsAllowed) continue;
 
-    const metafield = line.merchandise?.product?.quantityDiscounts;
-
-    if (!metafield?.value) continue;
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(metafield.value);
-    } catch (e) {
-      continue; // skip invalid JSON
-    }
-
-    const tiers = getLineTiers(parsed, variantId, countryCode);
+    const tiers = tiersForLine(line, countryCode, configCache, tierCache);
 
     if (!tiers.length) continue;
 

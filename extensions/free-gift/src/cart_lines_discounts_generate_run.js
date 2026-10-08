@@ -35,32 +35,36 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
-  const regularLines = input.cart.lines.filter((line) => !isAutoGiftLine(line));
-  const subtotal = regularLines.reduce(
-    (sum, line) => sum + Number(line.cost?.totalAmount?.amount || 0),
-    0,
-  );
+  const preparedLines = prepareLines(input.cart.lines);
+  const regularLines = [];
+  let subtotal = 0;
+  for (const line of preparedLines) {
+    if (line.isGift) continue;
+    regularLines.push(line);
+    subtotal += line.amount;
+  }
 
-  const qualifiedGiftVariantIds = new Set(
-    campaigns
-      .filter((campaign) => campaignQualifies(campaign, regularLines, subtotal))
-      .flatMap((campaign) => campaign.giftVariantIds),
-  );
+  const qualifiedGiftVariantIds = new Set();
+  for (const campaign of campaigns) {
+    if (!campaignQualifies(campaign, regularLines, subtotal)) continue;
+    for (const variantId of campaign.giftVariantIds) {
+      qualifiedGiftVariantIds.add(variantId);
+    }
+  }
 
   if (!qualifiedGiftVariantIds.size) {
     return { operations: [] };
   }
 
-  const candidates = input.cart.lines
-    .filter((line) =>
-      isAutoGiftLine(line) &&
-      qualifiedGiftVariantIds.has(line.merchandise?.id),
-    )
-    .map((line) => ({
+  const candidates = [];
+  for (const line of preparedLines) {
+    if (!line.isGift || !qualifiedGiftVariantIds.has(line.variantId)) continue;
+    candidates.push({
       message: 'Free Gift',
       targets: [{ cartLine: { id: line.id, quantity: 1 } }],
       value: { percentage: { value: '100' } },
-    }));
+    });
+  }
 
   if (!candidates.length) {
     return { operations: [] };
@@ -95,9 +99,9 @@ function normalizeCampaigns(config) {
       logic: campaign.logic === 'AND' ? 'AND' : 'OR',
       giftVariantIds: uniqueStrings(campaign.giftVariantIds),
       conditions: {
-        productTypes: uniqueStrings(campaign.conditions?.productTypes),
+        productTypes: uniqueStrings(campaign.conditions?.productTypes).map((type) => type.toLowerCase()),
         collectionIds: uniqueStrings(campaign.conditions?.collectionIds),
-        tags: uniqueStrings(campaign.conditions?.tags),
+        tags: uniqueStrings(campaign.conditions?.tags).map((tag) => tag.toLowerCase()),
       },
     }))
     .filter((campaign) => campaign.giftVariantIds.length);
@@ -110,18 +114,44 @@ function normalizeThreshold(value) {
   return num;
 }
 
+function prepareLines(lines) {
+  const prepared = [];
+
+  for (const line of lines) {
+    const product = line.merchandise?.product;
+    const tags = new Set();
+    const tagResults = product?.hasTags;
+
+    if (tagResults) {
+      for (const entry of tagResults) {
+        if (entry?.hasTag && entry.tag) tags.add(String(entry.tag).toLowerCase());
+      }
+    }
+
+    prepared.push({
+      id: line.id,
+      variantId: line.merchandise?.id,
+      isGift: isAutoGiftLine(line),
+      amount: Number(line.cost?.totalAmount?.amount || 0),
+      productType: String(product?.productType || "").toLowerCase(),
+      inAnyCollection: Boolean(product?.inAnyCollection),
+      tags,
+    });
+  }
+
+  return prepared;
+}
+
 function isLineEligible(conditions, line) {
-  const product = line.merchandise?.product;
-  if (conditions.productTypes.length) {
-    const wanted = new Set(conditions.productTypes.map((t) => t.toLowerCase()));
-    if (wanted.has((product?.productType || "").toLowerCase())) return true;
-  }
-  if (conditions.collectionIds.length) {
-    if (product?.inAnyCollection) return true;
-  }
-  if (conditions.tags.length) {
-    const wanted = new Set(conditions.tags.map((t) => t.toLowerCase()));
-    if (product?.hasTags?.some((r) => r.hasTag && wanted.has(r.tag.toLowerCase()))) return true;
+  const productTypes = conditions.productTypes;
+  if (productTypes.length && productTypes.includes(line.productType)) return true;
+  if (conditions.collectionIds.length && line.inAnyCollection) return true;
+
+  const wantedTags = conditions.tags;
+  if (wantedTags.length) {
+    for (const tag of wantedTags) {
+      if (line.tags.has(tag)) return true;
+    }
   }
   return false;
 }
@@ -141,8 +171,14 @@ function campaignQualifies(campaign, lines, subtotal) {
   const hasProductConditions =
     conditions.productTypes.length || conditions.collectionIds.length || conditions.tags.length;
   if (hasProductConditions) {
-    const eligibleLines = lines.filter((line) => isLineEligible(conditions, line));
-    results.push(eligibleLines.length > 0);
+    let eligible = false;
+    for (const line of lines) {
+      if (isLineEligible(conditions, line)) {
+        eligible = true;
+        break;
+      }
+    }
+    results.push(eligible);
   }
 
   if (!results.length) return true;

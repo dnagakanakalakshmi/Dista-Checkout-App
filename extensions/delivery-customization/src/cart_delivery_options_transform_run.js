@@ -18,19 +18,23 @@ export function cartDeliveryOptionsTransformRun(input) {
 
   const shopSettings = {
     readyToShipRegularRange: parseShopDispatchRange(
+      input?.shop?.readyToShipRegular?.jsonValue ??
       input?.shop?.readyToShipRegular?.value
     ),
 
     readyToShipOnlineRange: parseShopDispatchRange(
+      input?.shop?.readyToShipOnlineOrders?.jsonValue ??
       input?.shop?.readyToShipOnlineOrders?.value
     ),
 
     fallbackRange: parseShopDispatchRange(
+      input?.shop?.fallbackDispatchDays?.jsonValue ??
       input?.shop?.fallbackDispatchDays?.value
     ) || { min: 5, max: 6 }
   };
 
   const templates = Array.isArray(shopConfig.templates) ? shopConfig.templates : [];
+  const compiledTemplates = compileTemplates(templates);
   const replacementFormat = shopConfig.replacementFormat || "Estimated Delivery: {label}";
   const countries = Array.isArray(shopConfig.countries)
     ? shopConfig.countries.map(c => String(c).toUpperCase().trim())
@@ -40,6 +44,7 @@ export function cartDeliveryOptionsTransformRun(input) {
   const groups = input?.cart?.deliveryGroups || [];
   const allLines = input?.cart?.lines || [];
   const operations = [];
+  const lineDataByCountry = new Map();
 
   for (const group of groups) {
     const countryCode = String(group?.deliveryAddress?.countryCode || "").toUpperCase();
@@ -50,13 +55,17 @@ export function cartDeliveryOptionsTransformRun(input) {
 
     if (!isAllowed) continue;
 
-    const lineData = getLineDeliveryData(allLines, countryCode, shopSettings);
-    const { readyMin, readyMax, overallMinStart, overallMaxEnd } = getReadyDays(input, lineData, shopConfig);
+    let lineData = lineDataByCountry.get(countryCode);
+    if (!lineData) {
+      lineData = getLineDeliveryData(allLines, countryCode, shopSettings);
+      lineDataByCountry.set(countryCode, lineData);
+    }
+    const { readyMin, readyMax, overallMinStart, overallMaxEnd } = getReadyDays(lineData, shopSettings);
 
     for (const option of group.deliveryOptions || []) {
       const title = String(option.title || "");
       const parsedDays =
-        parseDaysFromTemplates(title, templates) ||
+        parseDaysFromTemplates(title, compiledTemplates) ||
         parseShippingDaysFromText(title) ||
         { min: 3, max: 5 };
 
@@ -131,15 +140,18 @@ function getNextBusinessDay(date) {
   return d;
 }
 
+const MAX_BUSINESS_DAYS = 120;
+
 function addBusinessDays(start, days) {
   const d = new Date(start);
   let added = 0;
+  const target = Math.max(0, Math.min(Number(days) || 0, MAX_BUSINESS_DAYS));
 
   if (d.getDay() !== 0 && d.getDay() !== 6) {
     added = 1;
   }
 
-  while (added < days) {
+  while (added < target) {
     d.setDate(d.getDate() + 1);
     const day = d.getDay();
 
@@ -290,7 +302,7 @@ function getLineDeliveryData(lines, countryCode, shopSettings) {
   }));
 }
 
-function getReadyDays(input, lineData) {
+function getReadyDays(lineData, shopSettings) {
   let highestMax = 0;
   let correspondingMin = 0;
 
@@ -340,32 +352,11 @@ function getReadyDays(input, lineData) {
     };
   }
 
-  // Product/shop-level fallback
-  const regular = parseJson(
-    input?.shop?.readyToShipRegular?.jsonValue ??
-    input?.shop?.readyToShipRegular?.value
-  );
-
-  const online = parseJson(
-    input?.shop?.readyToShipOnlineOrders?.jsonValue ??
-    input?.shop?.readyToShipOnlineOrders?.value
-  );
-
-  const regularMin = toNumberSafe(
-    regular?.delivery_min_days
-  );
-
-  const regularMax = toNumberSafe(
-    regular?.delivery_max_days
-  );
-
-  const onlineMin = toNumberSafe(
-    online?.delivery_min_days
-  );
-
-  const onlineMax = toNumberSafe(
-    online?.delivery_max_days
-  );
+  // Product/shop-level fallback. Ranges were parsed once up front.
+  const regularMin = shopSettings.readyToShipRegularRange?.min || 0;
+  const regularMax = shopSettings.readyToShipRegularRange?.max || 0;
+  const onlineMin = shopSettings.readyToShipOnlineRange?.min || 0;
+  const onlineMax = shopSettings.readyToShipOnlineRange?.max || 0;
 
   const hasOnlineProduct = lineData.some(
     line => line.hasOnlineProductTag
@@ -445,37 +436,45 @@ function parseShippingDaysFromText(text) {
   return null;
 }
 
-function parseDaysFromTemplates(title, templates) {
+function compileTemplates(templates) {
+  const compiled = [];
+
   for (const template of templates) {
     const regex = buildTemplateRegex(template);
+    if (regex) compiled.push(regex);
+  }
 
-    if (!regex) continue;
+  return compiled;
+}
 
+function parseDaysFromTemplates(title, compiledTemplates) {
+  for (const regex of compiledTemplates) {
     const match = title.match(regex);
 
     if (!match) continue;
 
-    // return parseShippingDaysFromText(match[1]);
-
     const parsedWindow = parseShippingDaysFromText(match[1]);
     if (!parsedWindow) continue;
 
-    return { ...parsedWindow, match: match[0] }; // full "6-9 Business day", not just "6-9"
-    
+    return { ...parsedWindow, match: match[0] };
   }
 
   return null;
 }
 
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function buildTemplateRegex(template) {
-  if (!template?.includes("{window}")) {
+  if (typeof template !== "string" || !template.includes("{window}")) {
     return null;
   }
 
-  const source = template.replace(
-    "{window}",
-    "(\\d+(?:\\s*(?:-|–|—|to)\\s*\\d+|\\+)?)"
-  );
+  const source = template
+    .split("{window}")
+    .map(escapeRegex)
+    .join("(\\d+(?:\\s*(?:-|–|—|to)\\s*\\d+|\\+)?)");
 
   return new RegExp(source, "i");
 }
@@ -513,9 +512,19 @@ function buildUpdatedTitle(
     return `${replacement} ${title}`;
   }
 
-  return title
-    .replace(new RegExp(matchedText, "i"), "")
+  return replaceFirstIgnoreCase(title, matchedText)
     .replace(/\s+/g, " ")
     .trim() +
     ` ${replacement}`;
+}
+
+function replaceFirstIgnoreCase(source, search) {
+  const haystack = String(source);
+  const needle = String(search || "");
+  if (!needle) return haystack;
+
+  const index = haystack.toLowerCase().indexOf(needle.toLowerCase());
+  if (index === -1) return haystack;
+
+  return haystack.slice(0, index) + haystack.slice(index + needle.length);
 }

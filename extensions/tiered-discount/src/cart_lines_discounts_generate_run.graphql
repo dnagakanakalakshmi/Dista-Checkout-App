@@ -30,7 +30,7 @@ query Input {
               namespace: "distacart"
               key: "volume_discount_config"
             ) {
-              value
+              jsonValue
             }
           }
         }

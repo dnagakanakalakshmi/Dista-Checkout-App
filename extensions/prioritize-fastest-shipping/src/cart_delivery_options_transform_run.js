@@ -80,7 +80,7 @@ export function cartDeliveryOptionsTransformRun(input) {
 function parseConfiguredCountries(jsonValue, rawValue) {
   const parsedValue = Array.isArray(jsonValue)
     ? jsonValue
-    : parseRawConfiguredCountries(rawValue);
+    : parseRawConfiguredCountries(jsonValue ?? rawValue);
 
   if (!Array.isArray(parsedValue)) {
     return new Set();
@@ -98,6 +98,18 @@ function parseConfiguredCountries(jsonValue, rawValue) {
  */
 function parseRawConfiguredCountries(rawValue) {
   if (!rawValue) {
+    return [];
+  }
+
+  if (typeof rawValue === "object") {
+    return Array.isArray(rawValue)
+      ? rawValue
+      : Array.isArray(rawValue.countries)
+        ? rawValue.countries
+        : [];
+  }
+
+  if (typeof rawValue !== "string") {
     return [];
   }
 

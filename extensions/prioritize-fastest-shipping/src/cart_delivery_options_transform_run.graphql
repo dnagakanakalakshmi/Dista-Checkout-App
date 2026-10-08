@@ -16,7 +16,6 @@ query CartDeliveryOptionsTransformRunInput {
   shop {
     metafield(namespace: "distacart", key: "prioritize_fastest_shipping_countries") {
       jsonValue
-      value
     }
   }
 }
