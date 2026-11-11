@@ -350,3 +350,30 @@ This template uses [Remix](https://remix.run). The following Shopify tools are a
 - [App extensions](https://shopify.dev/docs/apps/app-extensions/list)
 - [Shopify Functions](https://shopify.dev/docs/api/functions)
 - [Getting started with internationalizing your app](https://shopify.dev/docs/apps/best-practices/internationalization/getting-started)
+# Scratch cards
+
+The account-page app bridges its `/apps/account-page/rewards` and
+`/apps/account-page/reveal` requests to the scratch backend using
+`SCRATCH_INTERNAL_SECRET`. Configure the same random secret in both apps; keep
+it out of source control.
+
+Run `npx prisma db push`, then `node scripts/seed-scratch.mjs your-shop.myshopify.com` to create the database collections and sample rewards. During local development, start the app with `shopify app dev`; Shopify CLI supplies the temporary public tunnel and updates the active app configuration. Run `node scripts/expire-scratch-cards.mjs` manually when you want to clean expired cards. Add the **Scratch card thank you** block in **Settings → Checkout → Customize → Thank you → Apps**, then save.
+
+For production, deploy the web app and app configuration after adding or changing the scratch routes:
+
+```shell
+npm run build
+npm run deploy
+```
+
+The app proxy must point to `https://shopify-app-dista-checkout.dista.care/proxy` with prefix `apps` and subpath `scratch`. If `/apps/scratch/<token>` returns Shopify's 404 page, verify that the deployed app responds to `/proxy/<token>` and that the active Shopify app configuration has these proxy settings. Updating only the extension does not deploy the web app route.
+
+Order confirmation email Liquid CTA (replace the shop domain if needed):
+
+```liquid
+<a href="{{ shop.url }}/apps/scratch/o/{{ order.id }}">Scratch your post-purchase surprise</a>
+```
+
+Scratch reward expiry starts when the customer reveals the card, not when the order is placed. The admin can configure
+the duration in hours, days, weeks, or calendar months from **App → Scratch Cards → Settings**. After changing the
+schema, run `npx prisma db push` and regenerate the Prisma client before deploying.

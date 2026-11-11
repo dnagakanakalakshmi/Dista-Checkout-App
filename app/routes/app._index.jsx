@@ -13,30 +13,13 @@ import { ensureDeliveryCustomizationExists } from "../delivery-customization-uti
 
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await shopify.authenticate.admin(request);
+  const { session } = await shopify.authenticate.admin(request);
   const { shop } = session;
 
-  // Check if delivery customizations are already attached
   let attached = false;
   let remoteAttached = false;
   let error = null;
   try {
-
-    // const query = `{
-    //   deliveryCustomizations(first: 10) {
-    //     nodes { id enabled title }
-    //   }
-    // }`;
-    // const resp = await admin.graphql(query);
-    // const data = await resp.json();
-    // const nodes = data?.data?.deliveryCustomizations?.nodes || [];
-    
-    // // Check for each specific function by title
-    // const deliveryCustomizationNode = nodes.find(n => n.title === "Estimated Delivery Dates");
-    // const remoteDeliveryNode = nodes.find(n => n.title === "Remote Area Delivery Filter");
-    
-    // attached = deliveryCustomizationNode?.enabled ?? false;
-    // remoteAttached = remoteDeliveryNode?.enabled ?? false;
 
     const est = await ensureDeliveryCustomizationExists(shop, {
       title: "Estimated Delivery Dates",

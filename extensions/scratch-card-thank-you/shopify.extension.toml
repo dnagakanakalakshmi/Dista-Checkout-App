@@ -1,0 +1,15 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "Scratch card thank you"
+handle = "scratch-card-thank-you"
+uid = "d3952a52-262b-459a-9095-e2d518b518c1192f5f57"
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/ThankYou.jsx"
+target = "purchase.thank-you.block.render"
+
+[extensions.capabilities]
+api_access = true
+network_access = true

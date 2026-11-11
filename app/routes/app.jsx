@@ -25,6 +25,7 @@ export default function App() {
         <Link to="/app/datesinput">Delivery Templates Input</Link>
         <Link to="/app/discounts">Manage Discounts</Link>
         <Link to="/app/free-gift-campaigns">Free Gift Campaigns</Link>
+        <Link to="/app/scratch">Scratch Cards</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

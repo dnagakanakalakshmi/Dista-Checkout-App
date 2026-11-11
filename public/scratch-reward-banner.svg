@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="420" viewBox="0 0 1050 420" fill="none">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1050" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B4BB9"/>
+      <stop offset="1" stop-color="#5143AE"/>
+    </linearGradient>
+    <linearGradient id="gift" x1="865" y1="152" x2="1048" y2="351" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5F1FF"/>
+      <stop offset="1" stop-color="#D2C7FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="2" width="1044" height="414" rx="28" fill="url(#background)" stroke="#6978F2" stroke-width="4"/>
+  <text x="42" y="114" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="50" font-weight="700">You’ve unlocked a surprise</text>
+  <text x="42" y="190" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="36">A guaranteed reward is waiting for you</text>
+  <rect x="43" y="233" width="361" height="130" rx="28" fill="white"/>
+  <text x="223.5" y="313" fill="#5547B6" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="700" text-anchor="middle">Tap to reveal</text>
+  <path d="M807 134l5 14 14 5-14 5-5 14-5-14-14-5 14-5 5-14Z" fill="#E9E4FF"/>
+  <path d="m786 209 39 19-44-9 5-10Zm-4 38 44 5-46 6 2-11Z" fill="#E9E4FF"/>
+  <path d="M858 164c-3-41 24-76 57-77 31-1 48 32 60 59 12-29 31-55 59-53 31 2 47 39 38 77l-26 7c7-27-1-49-16-50-18-1-31 25-42 51l-61-4c-9-24-21-51-38-48-15 3-20 23-11 45l-20-7Z" fill="#E3DCFF"/>
+  <path d="M913 111c13 4 25 21 37 43-22 0-45-4-55-17-10-12-2-29 18-26Zm110-5c-17 3-32 19-45 44 22 1 43-3 54-16 10-12 8-29-9-28Z" fill="#C5B9FF"/>
+  <path d="M835 159h210v44c0 12-10 22-22 22H857c-12 0-22-10-22-22v-44Z" fill="url(#gift)"/>
+  <path d="M853 213h177v127c0 12-10 22-22 22H875c-12 0-22-10-22-22V213Z" fill="url(#gift)"/>
+  <path d="M920 159h44v203h-44z" fill="#8674E7"/>
+  <path d="M835 180h210v23c0 12-10 22-22 22H857c-12 0-22-10-22-22v-23Z" fill="#F5F1FF"/>
+  <path d="M920 180h44v182h-44z" fill="#7968D7"/>
+  <path d="m865 153 38-2 17 10h44l17-10 38 2v13H865v-13Z" fill="#D6CCFF"/>
+</svg>

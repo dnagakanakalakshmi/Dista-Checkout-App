@@ -1,27 +1,35 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2c7c2cd0fc2bbf7adced3353d533122e"
-application_url = "https://jerry-ecology-ice-currently.trycloudflare.com"
+application_url = "https://tariff-yrs-clubs-objective.trycloudflare.com"
 embedded = true
 name = "estimated-delivery-dates"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_products,read_shipping,write_cart_transforms,write_delivery_customizations,write_discounts,write_products"
+scopes = "read_customers,read_orders,read_products,read_shipping,write_cart_transforms,write_delivery_customizations,write_discounts,write_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://jerry-ecology-ice-currently.trycloudflare.com/api/auth"
+  "https://tariff-yrs-clubs-objective.trycloudflare.com/api/auth"
 ]
 
 [webhooks]
 api_version = "2026-04"
 
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/paid"
+  topics = [ "orders/paid" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/cancelled"
+  topics = [ "orders/cancelled" ]
+
 [app_proxy]
-url = "https://jerry-ecology-ice-currently.trycloudflare.com"
-subpath = "dista-checkout"
+url = "https://tariff-yrs-clubs-objective.trycloudflare.com/proxy"
+subpath = "scratch"
 prefix = "apps"
 
 [build]

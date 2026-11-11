@@ -84,6 +84,7 @@ function formatSubtotalRange(campaign) {
 export default function FreeGiftCampaigns() {
   const { config, discountId } = useLoaderData();
   const [campaigns, setCampaigns] = useState(config.campaigns || []);
+  const [campaignToDelete, setCampaignToDelete] = useState(null);
   const [notification, setNotification] = useState(
     config.notification || { enabled: false, title: "You've unlocked free gifts!" },
   );
@@ -101,8 +102,8 @@ export default function FreeGiftCampaigns() {
     if (settingsFetcher.state !== "idle" || !settingsFetcher.data) return;
     if (settingsFetcher.data.ok) {
       shopify.toast.show("Settings saved");
-      setNotification(settingsFetcher.data.config?.notification || notification);
-      setChannelSettings(settingsFetcher.data.config?.channelSettings || channelSettings);
+      setNotification((current) => settingsFetcher.data.config?.notification || current);
+      setChannelSettings((current) => settingsFetcher.data.config?.channelSettings || current);
     } else if (settingsFetcher.data.errors?.length) {
       shopify.toast.show(settingsFetcher.data.errors[0], { isError: true, tone: "critical" });
     }
@@ -113,15 +114,26 @@ export default function FreeGiftCampaigns() {
     if (deleteFetcher.data.ok) {
       shopify.toast.show("Campaign deleted");
       setCampaigns(deleteFetcher.data.config?.campaigns || []);
+      setCampaignToDelete(null);
+      document.getElementById("delete-free-gift-campaign-modal")?.hideOverlay();
     } else if (deleteFetcher.data.errors?.length) {
       shopify.toast.show(deleteFetcher.data.errors[0], { isError: true, tone: "critical" });
     }
   }, [deleteFetcher.state, deleteFetcher.data, shopify]);
 
-  const deleteCampaign = (campaign) => {
-    if (!confirm(`Delete "${campaign.title}"?`)) return;
+  const requestDeleteCampaign = (campaign) => {
+    setCampaignToDelete(campaign);
+    document.getElementById("delete-free-gift-campaign-modal")?.showOverlay();
+  };
+
+  const confirmDeleteCampaign = () => {
+    if (!campaignToDelete) return;
     deleteFetcher.submit(
-      { intent: "delete-campaign", campaignId: campaign.id, discountId: latestDiscountId },
+      {
+        intent: "delete-campaign",
+        campaignId: campaignToDelete.id,
+        discountId: latestDiscountId,
+      },
       { method: "post" },
     );
   };
@@ -175,7 +187,7 @@ export default function FreeGiftCampaigns() {
                           {campaign.enabled ? "Enabled" : "Disabled"}
                         </s-badge>
                       </s-table-cell>
-                      <s-table-cell>{formatSubtotalRange(campaign)}</s-table-cell>f
+                      <s-table-cell>{formatSubtotalRange(campaign)}</s-table-cell>
                       <s-table-cell>
                         {campaign.giftProducts?.length || campaign.giftVariantIds?.length || 0}
                       </s-table-cell>
@@ -187,7 +199,7 @@ export default function FreeGiftCampaigns() {
                           >
                             Edit
                           </s-button>
-                          <s-button variant="secondary" tone="critical" onClick={() => deleteCampaign(campaign)}>
+                          <s-button variant="secondary" tone="critical" onClick={() => requestDeleteCampaign(campaign)}>
                             Delete
                           </s-button>
                         </s-stack>
@@ -245,6 +257,32 @@ export default function FreeGiftCampaigns() {
           </s-button>
         </s-stack>
       </s-section>
+      <s-modal id="delete-free-gift-campaign-modal" heading="Delete campaign?">
+        <s-stack gap="base">
+          <s-text>
+            Delete {campaignToDelete?.title ? `"${campaignToDelete.title}"` : "this campaign"}?
+          </s-text>
+          <s-text tone="caution">This action cannot be undone.</s-text>
+        </s-stack>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          tone="critical"
+          loading={deleteFetcher.state !== "idle"}
+          onClick={confirmDeleteCampaign}
+        >
+          Delete campaign
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          variant="secondary"
+          commandFor="delete-free-gift-campaign-modal"
+          command="--hide"
+          disabled={deleteFetcher.state !== "idle"}
+        >
+          Cancel
+        </s-button>
+      </s-modal>
     </s-page>
   );
 }

@@ -33,3 +33,63 @@ model Session {
   collaborator  Boolean? @default(false)
   emailVerified Boolean? @default(false)
 }
+
+model ScratchConfig {
+  shop          String   @id @map("_id")
+  enabled       Boolean  @default(true)
+  minOrderValue Float    @default(0)
+  expiryHours   Int      @default(48)
+  expiryValue   Int      @default(48)
+  expiryUnit    String   @default("HOURS")
+  theme         String   @default("default")
+  updatedAt     DateTime @updatedAt
+  rewards       RewardTemplate[]
+}
+
+model RewardTemplate {
+  id               String       @id @default(cuid()) @map("_id")
+  shop             String
+  label            String
+  category         String?
+  description      String?
+  imageUrl         String?
+  collectionId     String?
+  collectionHandle String?
+  collectionTitle  String?
+  type             String
+  value            Float
+  weight           Int
+  minOrderValue    Float        @default(0)
+  expiryValue Int    @default(48)
+  expiryUnit  String @default("HOURS")
+  segmentIds    String[]     @default([])
+  maxIssued     Int?
+  issuedCount   Int          @default(0)
+  active        Boolean      @default(true)
+  deletedAt     DateTime?
+  config        ScratchConfig @relation(fields: [shop], references: [shop])
+  cards         ScratchCard[]
+
+  @@index([shop])
+}
+
+model ScratchCard {
+  id               String         @id @default(cuid()) @map("_id")
+  shop             String
+  orderId          String
+  orderName        String?
+  customerId       String?
+  rewardTemplateId String
+  status           String         @default("ISSUED")
+  discountCode     String?
+  discountId       String?
+  redeemedAt       DateTime?
+  issuedAt         DateTime       @default(now())
+  revealedAt       DateTime?
+  expiresAt        DateTime?
+  rewardTemplate   RewardTemplate @relation(fields: [rewardTemplateId], references: [id])
+
+  @@unique([shop, orderId])
+  @@index([shop, status])
+  @@index([shop, customerId, issuedAt])
+}
