@@ -17,44 +17,10 @@ const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner?v=2`;
 const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
-// Only used to pick the banner height; the width itself is 100% of the column.
-const BANNER_WIDTH_DESKTOP = 500;
-const BANNER_ASSUMED_MOBILE_WIDTH = 340;
 
 function readOrderId() {
   const confirmation = shopify.orderConfirmation?.value || shopify.orderConfirmation?.current;
   return confirmation?.order?.id || confirmation?.id || null;
-}
-
-// Reads the real pixel width/height from PNG or JPEG bytes.
-function readImageSize(bytes) {
-  // PNG
-  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset);
-    return { w: view.getUint32(16), h: view.getUint32(20) };
-  }
-  // JPEG
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
-    let i = 2;
-    while (i < bytes.length - 9) {
-      if (bytes[i] !== 0xff) {
-        i += 1;
-        continue;
-      }
-      const marker = bytes[i + 1];
-      if (marker === 0xff) {
-        i += 1;
-        continue;
-      }
-      const isSOF =
-        marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
-      if (isSOF) {
-        return { h: (bytes[i + 5] << 8) | bytes[i + 6], w: (bytes[i + 7] << 8) | bytes[i + 8] };
-      }
-      i += 2 + ((bytes[i + 2] << 8) | bytes[i + 3]);
-    }
-  }
-  return null;
 }
 
 function ScratchThankYou() {
@@ -68,8 +34,6 @@ function ScratchThankYou() {
   const [revealing, setRevealing] = useState(false);
   const [reward, setReward] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [bannerSize, setBannerSize] = useState({ w: 1050, h: 420 });
-  const [bannerLoaded, setBannerLoaded] = useState(false);
   const storefrontOrigin =
     shop?.storefrontUrl || (shop?.myshopifyDomain ? `https://${shop.myshopifyDomain}` : "");
   const languageParts = language?.isoCode?.toLowerCase().split("-");
@@ -89,27 +53,6 @@ function ScratchThankYou() {
     });
     return () => unsubscribe?.();
   }, []);
-
-  // Read the banner's real dimensions; when this finishes, the skeleton is replaced by the banner.
-  useEffect(() => {
-    if (!card?.token) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(BANNER_IMAGE);
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        const size = readImageSize(bytes);
-        if (size?.w && size?.h && !cancelled) setBannerSize(size);
-      } catch (error) {
-        console.error("[scratch-thank-you] banner size lookup failed", error);
-      } finally {
-        if (!cancelled) setBannerLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [card?.token]);
 
   useEffect(() => {
     if (!orderId) {
@@ -183,16 +126,12 @@ function ScratchThankYou() {
 
   const revealed = reward?.state === "revealed";
   const failed = reward?.state === "error";
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(globalThis.navigator?.userAgent || "");
-  const heightBasis = isMobile ? BANNER_ASSUMED_MOBILE_WIDTH : BANNER_WIDTH_DESKTOP;
-  const bannerHeight = Math.round((heightBasis * bannerSize.h) / bannerSize.w);
 
   if (!card?.token) {
     if (!checkingEligibility) return null;
     return (
       <s-box
         inlineSize="100%"
-        blockSize={`${bannerHeight}px`}
         background="subdued"
         borderRadius="base"
         padding="base"
@@ -204,40 +143,28 @@ function ScratchThankYou() {
 
   return (
     <>
-      {bannerLoaded ? (
-        <s-clickable
-          onClick={reveal}
-          commandFor={MODAL_ID}
-          command="--show"
-          inlineSize="100%"
-          blockSize={`${bannerHeight}px`}
-          padding="none"
-          border="none"
-          borderRadius="none"
-          background="transparent"
-          accessibilityLabel={revealed ? "View your reward" : "Tap to reveal your reward"}
-        >
-          <s-image
-            src={BANNER_IMAGE}
-            alt="You've unlocked a surprise. A guaranteed reward is waiting for you. Tap to reveal."
-            aspectRatio={`${bannerSize.w}/${bannerSize.h}`}
-            objectFit="cover"
-            borderRadius="base"
-            inlineSize="fill"
-            loading="eager"
-          />
-        </s-clickable>
-      ) : (
-        <s-box
-          inlineSize="100%"
-          blockSize={`${bannerHeight}px`}
-          background="subdued"
+      <s-clickable
+        onClick={reveal}
+        commandFor={MODAL_ID}
+        command="--show"
+        inlineSize="100%"
+        blockSize="auto"
+        padding="none"
+        border="none"
+        borderRadius="none"
+        background="transparent"
+        accessibilityLabel={revealed ? "View your reward" : "Tap to reveal your reward"}
+      >
+        <s-image
+          src={BANNER_IMAGE}
+          alt="You've unlocked a surprise. A guaranteed reward is waiting for you. Tap to reveal."
+          aspectRatio="1024/267"
+          objectFit="cover"
           borderRadius="base"
-          padding="base"
-        >
-          <s-skeleton-paragraph content="Loading your reward" />
-        </s-box>
-      )}
+          inlineSize="fill"
+          loading="eager"
+        />
+      </s-clickable>
       <s-modal
         id={MODAL_ID}
         heading={revealed ? "Your reward is unlocked" : "You've unlocked a surprise"}
