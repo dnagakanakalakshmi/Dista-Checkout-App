@@ -13,11 +13,11 @@ export const loader = async ({ request }) => {
   }
 
   try {
-    const image = await readFile(resolve(process.cwd(), "public", "scratch-reward-banner.jpg"));
+    const image = await readFile(resolve(process.cwd(), "public", "scratch-reward-banner-v2.png"));
     const headers = new Headers(CORS_HEADERS);
-    headers.set("Content-Type", "image/jpeg");
+    headers.set("Content-Type", "image/png");
     headers.set("Content-Length", String(image.byteLength));
-    headers.set("Cache-Control", "public, max-age=3600");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
     return new Response(request.method === "HEAD" ? null : image, { headers });
   } catch (error) {
     console.error("[scratch] banner image failed to load", error);

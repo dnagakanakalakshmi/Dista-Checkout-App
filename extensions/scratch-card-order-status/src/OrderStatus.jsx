@@ -16,7 +16,7 @@ export default function extension() {
 const APP_URL = "https://shopify-app-dista-checkout.dista.care";
 const MODAL_ID = "scratch-card-order-status-modal";
 const COUPON_ID = "scratch-order-coupon";
-const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
+const BANNER_IMAGE = `${APP_URL}/api/scratch/banner?v=2`;
 const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
 
 function ScratchOrderStatus() {
@@ -148,7 +148,7 @@ function ScratchOrderStatus() {
         <s-image
           src={BANNER_IMAGE}
           alt="You've unlocked a surprise. A guaranteed reward is waiting for you. Tap to reveal."
-          aspectRatio="5/2"
+          aspectRatio="1024/267"
           objectFit="cover"
           inlineSize="fill"
           loading="eager"

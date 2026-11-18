@@ -15,7 +15,7 @@ export default function extension() {
 const APP_URL = "https://dista-checkout-app.onrender.com";
 const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
-const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
+const BANNER_IMAGE = `${APP_URL}/api/scratch/banner?v=2`;
 const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
 // Only used to pick the banner height; the width itself is 100% of the column.
 const BANNER_WIDTH_DESKTOP = 500;
