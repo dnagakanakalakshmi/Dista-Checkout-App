@@ -14,9 +14,9 @@ async function readToken(request) {
 
 export const action = async ({ request }) => {
   try {
-    const { loggedInCustomerId } = await authenticate.public.appProxy(request);
+    const { shop, loggedInCustomerId } = await authenticate.public.appProxy(request);
     const token = await readToken(request);
-    return json(await revealCard(token, loggedInCustomerId));
+    return json(await revealCard(token, loggedInCustomerId, shop));
   } catch (error) {
     console.error("Scratch reveal failed", error);
     return json(

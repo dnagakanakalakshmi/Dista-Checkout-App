@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pickReward } from "../app/models/pick-reward.js";
+import { eligibleRewards, pickReward } from "../app/models/pick-reward.js";
 import { signToken, verifyToken } from "../app/models/scratch-token.js";
 import {
   hasIssueCap,
@@ -10,8 +10,10 @@ import {
   idOf,
   matchesRewardSegments,
   normalizeOrderId,
+  orderTotalInShopCurrency,
   orderPayloadFromAdmin,
   resultFor,
+  scratchDiscountCodesFromOrder,
   shopFromDest,
   shopFromSessionToken,
   storefrontScratchUrl,
@@ -33,13 +35,42 @@ test("pickReward follows weights and eligibility", () => {
   }
 });
 
+test("eligible rewards include the exact minimum and exclude inactive or zero-weight rewards", () => {
+  const rewards = [
+    { id: "minimum", active: true, weight: 1, minOrderValue: 1000 },
+    { id: "below-minimum", active: true, weight: 1, minOrderValue: 1000.01 },
+    { id: "inactive", active: false, weight: 1, minOrderValue: 0 },
+    { id: "zero-weight", active: true, weight: 0, minOrderValue: 0 },
+    { id: "cap-reached", active: true, weight: 1, minOrderValue: 0, maxIssued: 1, issuedCount: 1 },
+  ];
+  assert.deepEqual(
+    eligibleRewards(rewards, 1000).map((reward) => reward.id),
+    ["minimum"],
+  );
+});
+
 test("tampered scratch tokens are invalid", () => {
   const previous = process.env.SHOPIFY_API_SECRET;
   process.env.SHOPIFY_API_SECRET = "test-secret";
-  const token = signToken("card-id");
-  assert.equal(verifyToken(token), "card-id");
-  assert.equal(verifyToken(`${token}x`), null);
-  process.env.SHOPIFY_API_SECRET = previous;
+  try {
+    const token = signToken("card-id");
+    assert.equal(verifyToken(token), "card-id");
+    assert.equal(verifyToken(`${token}x`), null);
+  } finally {
+    if (previous === undefined) delete process.env.SHOPIFY_API_SECRET;
+    else process.env.SHOPIFY_API_SECRET = previous;
+  }
+});
+
+test("scratch token signing fails clearly without an application secret", () => {
+  const previous = process.env.SHOPIFY_API_SECRET;
+  delete process.env.SHOPIFY_API_SECRET;
+  try {
+    assert.throws(() => signToken("card-id"), /SHOPIFY_API_SECRET is required/);
+    assert.equal(verifyToken("card-id.signature"), null);
+  } finally {
+    if (previous !== undefined) process.env.SHOPIFY_API_SECRET = previous;
+  }
 });
 
 test("order and shop ids normalize from GIDs, URLs, and custom domains", () => {
@@ -72,6 +103,17 @@ test("order and shop ids normalize from GIDs, URLs, and custom domains", () => {
     "7",
   ]);
   assert.deepEqual(customerIdLookupValues("gid://shopify/Checkout/7"), []);
+});
+
+test("redemption lookup only considers scratch-card discount codes", () => {
+  assert.deepEqual(
+    scratchDiscountCodesFromOrder({
+      discount_codes: [{ code: "summer10" }, { code: "scr-A1b2" }],
+      discountCodes: ["VIP20", " SCR-C3D4 "],
+    }),
+    ["SCR-A1B2", "SCR-C3D4"],
+  );
+  assert.deepEqual(scratchDiscountCodesFromOrder({ discount_codes: ["summer10"] }), []);
 });
 
 test("resultFor never re-issues a revealed or void card", () => {
@@ -136,14 +178,50 @@ test("admin order payload maps to webhook-shaped fields", () => {
   const payload = orderPayloadFromAdmin({
     id: "gid://shopify/Order/99",
     name: "#1001",
-    currentTotalPriceSet: { shopMoney: { amount: "1499.00" } },
+    currentTotalPriceSet: { shopMoney: { amount: "1499.00", currencyCode: "USD" } },
+    currencyCode: "USD",
+    presentmentCurrencyCode: "GBP",
     customer: { id: "gid://shopify/Customer/7" },
     email: "customer@example.com",
   });
   assert.equal(payload.id, "99");
   assert.equal(payload.total_price, 1499);
+  assert.equal(payload.total_price_set.shop_money.currency_code, "USD");
+  assert.equal(payload.currency, "USD");
+  assert.equal(payload.presentment_currency, "GBP");
   assert.equal(payload.customer.admin_graphql_api_id, "gid://shopify/Customer/7");
   assert.equal("email" in payload, false);
+});
+
+test("scratch eligibility uses Shopify's shop-currency total for international orders", () => {
+  assert.equal(
+    orderTotalInShopCurrency({
+      total_price: "790.00",
+      currency: "USD",
+      presentment_currency: "GBP",
+      total_price_set: {
+        shop_money: { amount: "1000.00", currency_code: "USD" },
+        presentment_money: { amount: "790.00", currency_code: "GBP" },
+      },
+    }),
+    1000,
+  );
+  assert.equal(
+    orderTotalInShopCurrency({
+      total_price: "1000.00",
+      currency: "USD",
+      presentment_currency: "USD",
+    }),
+    1000,
+  );
+  assert.equal(
+    orderTotalInShopCurrency({
+      total_price: "790.00",
+      currency: "USD",
+      presentment_currency: "GBP",
+    }),
+    null,
+  );
 });
 
 test("scratch page includes reveal interaction and reward CTAs", () => {

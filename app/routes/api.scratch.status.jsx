@@ -20,10 +20,12 @@ async function authenticateAny(request) {
     return await authenticate.public.customerAccount(request);
   } catch (error) {
     if (error instanceof Response && error.status === 204) throw error;
-    console.warn(
-      "[scratch] customerAccount auth failed:",
-      error instanceof Response ? `${error.status} ${error.statusText}` : error,
-    );
+    if (process.env.SCRATCH_DEBUG === "true") {
+      console.info(
+        "[scratch] customerAccount auth failed; trying checkout authentication",
+        error instanceof Response ? `${error.status} ${error.statusText}` : error,
+      );
+    }
     return await authenticate.public.checkout(request);
   }
 }
@@ -37,7 +39,9 @@ export const loader = async ({ request }) => {
     const { sessionToken, cors } = await authenticateAny(request);
     const orderId = new URL(request.url).searchParams.get("orderId");
     const shop = shopFromSessionToken(sessionToken);
-    console.log("[scratch] status lookup", { shop, orderId, sub: sessionToken.sub });
+    if (process.env.SCRATCH_DEBUG === "true") {
+      console.info("[scratch] status lookup", { shop, orderId });
+    }
 
     const card = await getCardForStorefront({
       shop,
@@ -45,7 +49,7 @@ export const loader = async ({ request }) => {
       viewerSub: sessionToken.sub,
     });
     const payload = !card
-      ? { card: null }
+      ? { card: null, eligibilityChecked: Boolean(orderId) }
       : {
           card: {
             token: signToken(card.id),

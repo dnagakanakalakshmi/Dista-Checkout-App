@@ -12,7 +12,7 @@ export default function extension() {
   render(<ScratchThankYou />, document.body);
 }
 
-const APP_URL = "https://mistakes-welfare-gage-ambien.trycloudflare.com";
+const APP_URL = "https://noticed-always-foods-blend.trycloudflare.com";
 const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
@@ -63,6 +63,7 @@ function ScratchThankYou() {
   const language = useLanguage();
   const [orderId, setOrderId] = useState(readOrderId());
   const [card, setCard] = useState(null);
+  const [checkingEligibility, setCheckingEligibility] = useState(true);
   const [status, setStatus] = useState(null);
   const [revealing, setRevealing] = useState(false);
   const [reward, setReward] = useState(null);
@@ -83,7 +84,6 @@ function ScratchThankYou() {
   const storefrontUrl = origin ? `${origin}${marketPath}` : null;
 
   useEffect(() => {
-    console.info("[scratch-thank-you] updated banner build loaded");
     const unsubscribe = shopify.orderConfirmation?.subscribe?.((value) => {
       const id = value?.order?.id || value?.id;
       if (id) setOrderId(id);
@@ -93,13 +93,13 @@ function ScratchThankYou() {
 
   // Read the banner's real dimensions; when this finishes, the skeleton is replaced by the banner.
   useEffect(() => {
+    if (!card?.token) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(BANNER_IMAGE);
         const bytes = new Uint8Array(await res.arrayBuffer());
         const size = readImageSize(bytes);
-        console.info("[scratch-thank-you] banner size", size);
         if (size?.w && size?.h && !cancelled) setBannerSize(size);
       } catch (error) {
         console.error("[scratch-thank-you] banner size lookup failed", error);
@@ -110,11 +110,12 @@ function ScratchThankYou() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [card?.token]);
 
   useEffect(() => {
     if (!orderId) {
       setStatus("Your order is still loading. Please refresh this page.");
+      setCheckingEligibility(false);
       return;
     }
     let cancelled = false;
@@ -131,16 +132,30 @@ function ScratchThankYou() {
             setCard(data.card);
             if (data.card.state === "revealed") setReward(data.card);
             setStatus(null);
+            setCheckingEligibility(false);
+            return;
+          }
+          if (data.eligibilityChecked) {
+            setStatus("No scratch card is available for this order.");
+            setCheckingEligibility(false);
             return;
           }
         } catch (error) {
           console.error("[scratch] status lookup failed", error);
+          if (!cancelled) {
+            setStatus("Unable to check reward eligibility. Please refresh this page.");
+            setCheckingEligibility(false);
+          }
+          return;
         }
         if (attempt < 14) {
           await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 150 : 350));
         }
       }
-      if (!cancelled) setStatus("No scratch card is available for this order.");
+      if (!cancelled) {
+        setStatus("No scratch card is available for this order.");
+        setCheckingEligibility(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -162,7 +177,6 @@ function ScratchThankYou() {
         body: JSON.stringify({ token: card.token }),
       });
       const data = await response.json();
-      console.log("[scratch] reveal response", response.status, data);
       if (!response.ok || data.state === "error") throw new Error("Reveal failed");
       setReward(data);
     } catch (error) {
@@ -178,6 +192,21 @@ function ScratchThankYou() {
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(globalThis.navigator?.userAgent || "");
   const heightBasis = isMobile ? BANNER_ASSUMED_MOBILE_WIDTH : BANNER_WIDTH_DESKTOP;
   const bannerHeight = Math.round((heightBasis * bannerSize.h) / bannerSize.w);
+
+  if (!card?.token) {
+    if (!checkingEligibility) return null;
+    return (
+      <s-box
+        inlineSize="100%"
+        blockSize={`${bannerHeight}px`}
+        background="subdued"
+        borderRadius="base"
+        padding="base"
+      >
+        <s-skeleton-paragraph content="Checking reward eligibility" />
+      </s-box>
+    );
+  }
 
   return (
     <>

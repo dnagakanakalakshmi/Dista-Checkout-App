@@ -22,11 +22,12 @@ export const loader = async ({ request }) => {
   const shop = shopFromDest(rawShop);
   const rawCustomerId = request.headers.get("x-scratch-customer");
   const customerId = idOf(rawCustomerId);
-  console.log("[scratch] internal rewards lookup", {
-    shop,
-    customerId,
-    hasCustomerId: Boolean(customerId),
-  });
+  if (process.env.SCRATCH_DEBUG === "true") {
+    console.info("[scratch] internal rewards lookup", {
+      shop,
+      hasCustomerId: Boolean(customerId),
+    });
+  }
   const rewards = await getCustomerScratchRewards(shop, customerId);
   return json({ rewards });
 };

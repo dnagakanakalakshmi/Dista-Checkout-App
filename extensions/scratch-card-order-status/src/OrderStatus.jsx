@@ -13,7 +13,7 @@ export default function extension() {
   render(<ScratchOrderStatus />, document.body);
 }
 
-const APP_URL = "https://mistakes-welfare-gage-ambien.trycloudflare.com";
+const APP_URL = "https://shopify-app-dista-checkout.dista.care";
 const MODAL_ID = "scratch-card-order-status-modal";
 const COUPON_ID = "scratch-order-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
@@ -26,6 +26,7 @@ function ScratchOrderStatus() {
   const language = useLanguage();
   const orderId = order?.id;
   const [card, setCard] = useState(null);
+  const [checkingEligibility, setCheckingEligibility] = useState(true);
   const [status, setStatus] = useState(null);
   const [revealing, setRevealing] = useState(false);
   const [reward, setReward] = useState(null);
@@ -46,6 +47,7 @@ function ScratchOrderStatus() {
   useEffect(() => {
     if (!orderId) {
       setStatus("Your order is still loading. Please refresh this page.");
+      setCheckingEligibility(false);
       return;
     }
     let cancelled = false;
@@ -62,16 +64,30 @@ function ScratchOrderStatus() {
             setCard(data.card);
             if (data.card.state === "revealed") setReward(data.card);
             setStatus(null);
+            setCheckingEligibility(false);
+            return;
+          }
+          if (data.eligibilityChecked) {
+            setStatus("No scratch card is available for this order.");
+            setCheckingEligibility(false);
             return;
           }
         } catch (error) {
           console.error("[scratch] status lookup failed", error);
+          if (!cancelled) {
+            setStatus("Unable to check reward eligibility. Please refresh this page.");
+            setCheckingEligibility(false);
+          }
+          return;
         }
         if (attempt < 14) {
           await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 150 : 350));
         }
       }
-      if (!cancelled) setStatus("No scratch card is available for this order.");
+      if (!cancelled) {
+        setStatus("No scratch card is available for this order.");
+        setCheckingEligibility(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -93,7 +109,6 @@ function ScratchOrderStatus() {
         body: JSON.stringify({ token: card.token }),
       });
       const data = await response.json();
-      console.log("[scratch] reveal response", response.status, data);
       if (!response.ok || data.state === "error") throw new Error("Reveal failed");
       setReward(data);
     } catch (error) {
@@ -106,6 +121,21 @@ function ScratchOrderStatus() {
 
   const revealed = reward?.state === "revealed";
   const failed = reward?.state === "error";
+
+  if (!card?.token) {
+    if (!checkingEligibility) return null;
+    return (
+      <s-box
+        inlineSize="fill"
+        blockSize="200px"
+        background="subdued"
+        borderRadius="base"
+        padding="base"
+      >
+        <s-skeleton-paragraph content="Checking reward eligibility" />
+      </s-box>
+    );
+  }
 
   return (
     <>

@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import { useFetcher, useLoaderData, useRevalidator } from "@remix-run/react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Banner,
@@ -20,10 +20,7 @@ import {
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import {
-  ensureScratchSetup,
-  reconcileExpiredScratchCards,
-} from "../models/scratch.server";
+import { ensureScratchSetup } from "../models/scratch.server";
 
 const types = ["PERCENT", "FIXED", "FREE_SHIPPING", "WALLET", "POINTS"];
 const expiryUnits = ["HOURS", "DAYS", "WEEKS", "MONTHS"];
@@ -54,6 +51,9 @@ export const loader = async ({ request }) => {
   const segmentsResponse = await admin.graphql(
     `#graphql
     query ScratchRewardSegments {
+      shop {
+        currencyCode
+      }
       segments(first: 100) {
         nodes {
           id
@@ -73,16 +73,35 @@ export const loader = async ({ request }) => {
   if (!segmentsPayload.data?.segments?.nodes) {
     throw new Error("Unable to load customer segments.");
   }
-  await reconcileExpiredScratchCards(shop);
+  const currencyCode = segmentsPayload.data?.shop?.currencyCode;
+  if (!currencyCode) {
+    throw new Error("Unable to load the shop currency for scratch reward minimums.");
+  }
+  const now = new Date();
   const [rewardRecords, issued, revealed, expired, voided] = await Promise.all([
     db.rewardTemplate.findMany({ where: { shop }, orderBy: { label: "asc" } }),
     db.scratchCard.count({ where: { shop } }),
-    db.scratchCard.count({ where: { shop, status: "REVEALED" } }),
-    db.scratchCard.count({ where: { shop, status: "EXPIRED" } }),
+    db.scratchCard.count({
+      where: {
+        shop,
+        status: "REVEALED",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    }),
+    db.scratchCard.count({
+      where: {
+        shop,
+        OR: [
+          { status: "EXPIRED" },
+          { status: "REVEALED", expiresAt: { lte: now } },
+        ],
+      },
+    }),
     db.scratchCard.count({ where: { shop, status: "VOID" } }),
   ]);
   return json({
     rewards: rewardRecords.filter((reward) => !reward.deletedAt),
+    currencyCode,
     segments: segmentsPayload.data?.segments?.nodes || [],
     stats: { issued, revealed, expired, voided },
   });
@@ -212,7 +231,7 @@ export const action = async ({ request }) => {
     const data = {
       shop,
       label: reward.label.trim(),
-      category: category || "Other Scratch Cards",
+      category: category || null,
       description: description || null,
       imageUrl: imageUrl || null,
       collectionId: collectionId || null,
@@ -255,7 +274,6 @@ const unitLabel = (value, unit) => {
 export default function ScratchAdmin() {
   const data = useLoaderData();
   const fetcher = useFetcher();
-  const revalidator = useRevalidator();
   const [draft, setDraft] = useState(null);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
   const saving = fetcher.state !== "idle";
@@ -263,11 +281,10 @@ export default function ScratchAdmin() {
   const notice = fetcher.data?.ok ? fetcher.data.message : null;
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
+    if (fetcher.state === "idle" && fetcher.data?.ok) {
       setDraft(null);
-      revalidator.revalidate();
     }
-  }, [fetcher.data, revalidator]);
+  }, [fetcher.data, fetcher.state]);
 
   const submit = (intent, payload) =>
     fetcher.submit(JSON.stringify({ intent, ...payload }), {
@@ -296,10 +313,11 @@ export default function ScratchAdmin() {
     reward.active ? "Yes" : "No",
     <InlineStack key={reward.id} gap="200">
       <Button
+        disabled={saving}
         onClick={() =>
           setDraft({
             ...reward,
-            category: reward.category || "Other Scratch Cards",
+            category: reward.category || "",
             description: reward.description || "",
             imageUrl: reward.imageUrl || "",
             imageFileId: reward.imageFileId || "",
@@ -317,7 +335,7 @@ export default function ScratchAdmin() {
       >
         Edit
       </Button>
-      <Button tone="critical" onClick={() => setDeleteCandidate(reward)}>
+      <Button tone="critical" disabled={saving} onClick={() => setDeleteCandidate(reward)}>
         Delete
       </Button>
     </InlineStack>,
@@ -341,12 +359,22 @@ export default function ScratchAdmin() {
                   <Text as="h2" variant="headingMd">
                     Rewards — what customers can win
                   </Text>
-                  <Button onClick={() => setDraft({ ...emptyReward })}>Add reward</Button>
+                  <Button disabled={saving} onClick={() => setDraft({ ...emptyReward })}>
+                    Add reward
+                  </Button>
                 </InlineStack>
                 <Text as="p" variant="bodyMd">
-                  Each reward has its own rules. Weight sets the relative odds, Minimum order and Customer segments
-                  set eligibility, Expiry sets how long it stays valid after it is revealed, Max issued limits a prize,
-                  and Active turns it on or off.
+                  Each reward has its own rules. Weight sets its relative chance among eligible rewards—for example,
+                  weight 20 is twice as likely as weight 10. Minimum order and Customer segments set eligibility,
+                  Expiry sets how long it stays valid after it is revealed, Max issued limits a prize, and Active turns
+                  it on or off.
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  The odds shown are a reference across all active rewards; actual odds vary based on order eligibility.
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Minimum order values are in your store currency ({data.currencyCode}). Shopify converts orders paid
+                  in other currencies to your store currency before checking eligibility.
                 </Text>
                 <Text as="p" variant="bodyMd" tone="subdued">
                   Total cards: {data.stats.issued} · Revealed: {data.stats.revealed} · Expired: {data.stats.expired} ·
@@ -356,6 +384,7 @@ export default function ScratchAdmin() {
                   <RewardForm
                     reward={draft}
                     segments={data.segments}
+                    currencyCode={data.currencyCode}
                     onChange={setDraft}
                     onSave={() => submit("saveReward", { reward: draft })}
                     onCancel={() => setDraft(null)}
@@ -364,7 +393,7 @@ export default function ScratchAdmin() {
                 ) : null}
                 <DataTable
                 columnContentTypes={["text", "text", "text", "numeric", "numeric", "text", "text", "text", "text", "text"]}
-                headings={["Label", "Account category", "Type", "Value", "Min order", "Customer segments", "Expiry", "Weight / odds", "Active", ""]}
+                headings={["Label", "Account category", "Type", "Value", `Min order (${data.currencyCode})`, "Customer segments", "Expiry", "Weight / active share", "Active", ""]}
                   rows={rows}
                 />
               </BlockStack>
@@ -382,6 +411,7 @@ export default function ScratchAdmin() {
           content: "Delete reward",
           destructive: true,
           loading: saving,
+          disabled: saving,
           onAction: () => {
             submit("delete", { id: deleteCandidate.id });
             setDeleteCandidate(null);
@@ -390,6 +420,7 @@ export default function ScratchAdmin() {
         secondaryActions={[
           {
             content: "Cancel",
+            disabled: saving,
             onAction: () => setDeleteCandidate(null),
           },
         ]}
@@ -405,7 +436,7 @@ export default function ScratchAdmin() {
   );
 }
 
-function RewardForm({ reward, segments, onChange, onSave, onCancel, saving }) {
+function RewardForm({ reward, segments, currencyCode, onChange, onSave, onCancel, saving }) {
   const shopify = useAppBridge();
   const imageFetcher = useFetcher();
   const [pickingImage, setPickingImage] = useState(false);
@@ -492,10 +523,10 @@ function RewardForm({ reward, segments, onChange, onSave, onCancel, saving }) {
           />
           <TextField
             label="Account page category"
-            value={reward.category || "Other Scratch Cards"}
+            value={reward.category ?? ""}
             onChange={(value) => set("category", value)}
             autoComplete="off"
-            helpText="Rewards with the same category appear together under one heading."
+            helpText="Optional. Rewards with the same category appear together. Clear this field to use the default category."
           />
           <TextField
             label="Account page description"
@@ -574,18 +605,20 @@ function RewardForm({ reward, segments, onChange, onSave, onCancel, saving }) {
             autoComplete="off"
           />
           <TextField
-            label="Weight"
+            label="Win chance weight"
             type="number"
             value={String(reward.weight)}
             onChange={(value) => set("weight", value)}
             autoComplete="off"
+            helpText="Required for reward selection. This is a relative chance among eligible rewards: 20 is twice as likely as 10."
           />
           <TextField
-            label="Minimum order"
+            label={`Minimum order (${currencyCode})`}
             type="number"
             value={String(reward.minOrderValue)}
             onChange={(value) => set("minOrderValue", value)}
             autoComplete="off"
+            helpText="Shopify checks the order total in your store currency, even when the buyer pays in another currency."
           />
           <Text as="h3" variant="headingSm">
             Customer segments
@@ -648,12 +681,12 @@ function RewardForm({ reward, segments, onChange, onSave, onCancel, saving }) {
           <Button
             variant="primary"
             loading={saving || pickingImage || imageFetcher.state !== "idle"}
-            disabled={pickingImage || imageFetcher.state !== "idle"}
+            disabled={saving || pickingImage || imageFetcher.state !== "idle"}
             onClick={onSave}
           >
             Save reward
           </Button>
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button disabled={saving} onClick={onCancel}>Cancel</Button>
         </InlineStack>
       </BlockStack>
     </Card>

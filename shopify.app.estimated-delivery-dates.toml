@@ -1,20 +1,12 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "2c7c2cd0fc2bbf7adced3353d533122e"
-application_url = "https://tariff-yrs-clubs-objective.trycloudflare.com"
-embedded = true
 name = "estimated-delivery-dates"
+application_url = "https://noticed-always-foods-blend.trycloudflare.com"
+embedded = true
 
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_orders,read_products,read_shipping,write_cart_transforms,write_delivery_customizations,write_discounts,write_products"
-optional_scopes = [ ]
-use_legacy_install_flow = false
-
-[auth]
-redirect_urls = [
-  "https://tariff-yrs-clubs-objective.trycloudflare.com/api/auth"
-]
+[build]
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-04"
@@ -27,10 +19,18 @@ api_version = "2026-04"
   uri = "/webhooks/orders/cancelled"
   topics = [ "orders/cancelled" ]
 
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders,read_products,read_shipping,write_cart_transforms,write_delivery_customizations,write_discounts,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://noticed-always-foods-blend.trycloudflare.com/api/auth"
+]
+
 [app_proxy]
-url = "https://tariff-yrs-clubs-objective.trycloudflare.com/proxy"
+url = "https://noticed-always-foods-blend.trycloudflare.com/proxy"
 subpath = "scratch"
 prefix = "apps"
-
-[build]
-automatically_update_urls_on_dev = true

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import db from "../db.server.js";
 import { unauthenticated } from "../shopify.server.js";
-import { pickReward } from "./pick-reward.js";
+import { eligibleRewards, pickReward } from "./pick-reward.js";
 import { signToken, verifyToken } from "./scratch-token.js";
 import { DEFAULT_SCRATCH_REWARDS, defaultRewardId } from "./scratch-defaults.js";
 import {
@@ -12,8 +12,10 @@ import {
   idOf,
   matchesRewardSegments,
   normalizeOrderId,
+  orderTotalDetailsInShopCurrency,
   orderPayloadFromAdmin,
   resultFor,
+  scratchDiscountCodesFromOrder,
   shopFromDest,
 } from "./scratch-util.js";
 
@@ -22,19 +24,33 @@ export { resultFor } from "./scratch-util.js";
 
 const isUniqueError = (error) => error?.code === "P2002";
 
+function debugScratch(message, details) {
+  if (process.env.SCRATCH_DEBUG === "true") console.info(message, details);
+}
+
 function orderFields(order) {
   const customerId =
     order.customer?.admin_graphql_api_id ||
     (order.customer?.id ? `gid://shopify/Customer/${order.customer.id}` : null);
+  const totalDetails = orderTotalDetailsInShopCurrency(order);
   return {
     orderId: normalizeOrderId(order.id),
     orderName: order.name || order.order_number?.toString(),
     customerId,
-    total: Number(order.total_price ?? order.current_total_price ?? 0),
+    total: totalDetails.amount,
+    totalCurrency: totalDetails.currency,
+    totalSource: totalDetails.source,
+    rawTotal: totalDetails.rawAmount,
   };
 }
 
-export async function ensureScratchSetup(shop) {
+export async function ensureScratchSetup(shop, createDefaults = true) {
+  await db.scratchConfig.upsert({
+    where: { shop },
+    update: {},
+    create: { shop },
+  });
+  if (!createDefaults) return;
   const existing = await db.rewardTemplate.count({ where: { shop } });
   if (existing > 0) return;
   for (const reward of DEFAULT_SCRATCH_REWARDS) {
@@ -55,32 +71,46 @@ export async function ensureScratchSetup(shop) {
 
 export async function findCardForOrder(shop, orderId) {
   const normalizedId = normalizeOrderId(orderId);
-  if (!normalizedId) return null;
-  const direct = await db.scratchCard.findUnique({
+  if (!shop || !normalizedId) return null;
+  return db.scratchCard.findUnique({
     where: { shop_orderId: { shop, orderId: normalizedId } },
+    include: { rewardTemplate: true },
   });
-  if (direct) return direct;
-  const matches = await db.scratchCard.findMany({ where: { orderId: normalizedId } });
-  if (shop) {
-    const sameShop = matches.find((card) => card.shop === shop);
-    if (sameShop) return sameShop;
-  }
-  return matches.length === 1 ? matches[0] : null;
 }
 
-export async function issueCardForOrder(shop, orderPayload) {
-  console.log("[scratch] issue start", shop, orderPayload?.id, "test:", orderPayload?.test);
+async function issueCardForOrderInternal(shop, orderPayload) {
+  if (!orderPayload || typeof orderPayload !== "object" || Array.isArray(orderPayload)) {
+    throw new TypeError("Scratch card issuance requires an order payload.");
+  }
+  const skipTestOrder =
+    process.env.SCRATCH_SKIP_TEST_ORDERS === "true" && orderPayload?.test;
+  debugScratch("[scratch] issue start", {
+    shop,
+    orderId: orderPayload?.id,
+    testOrder: Boolean(orderPayload?.test),
+    skipTestOrder: Boolean(skipTestOrder),
+  });
 
-  if (process.env.SCRATCH_SKIP_TEST_ORDERS === "true" && orderPayload.test) {
-    console.log("[scratch] skip: test order");
+  if (skipTestOrder) {
+    debugScratch("[scratch] skip: test order", { shop, orderId: orderPayload?.id });
     return null;
   }
 
-  await ensureScratchSetup(shop);
-
-  const order = orderFields(orderPayload);
+  const order = orderFields(orderPayload || {});
   if (!order.orderId) {
-    console.log("[scratch] skip: missing order id");
+    debugScratch("[scratch] skip: missing order id");
+    return null;
+  }
+  if (order.total === null) {
+    console.warn("[scratch] skip: unable to determine order total in shop currency", {
+      shop,
+      orderId: order.orderId,
+      rawTotal: order.rawTotal,
+      totalCurrency: order.totalCurrency,
+      totalSource: order.totalSource,
+      orderCurrency: orderPayload.currency,
+      presentmentCurrency: orderPayload.presentment_currency,
+    });
     return null;
   }
 
@@ -88,70 +118,178 @@ export async function issueCardForOrder(shop, orderPayload) {
     where: { shop_orderId: { shop, orderId: order.orderId } },
   });
   if (existing) {
-    console.log("[scratch] card already exists", order.orderId);
+    debugScratch("[scratch] card already exists", {
+      shop,
+      orderId: order.orderId,
+      cardId: existing.id,
+      status: existing.status,
+      rewardTemplateId: existing.rewardTemplateId,
+    });
     return existing;
   }
 
-  let candidates = await db.rewardTemplate.findMany({ where: { shop, active: true } });
-  console.log("[scratch] reward templates:", candidates.length);
+  await ensureScratchSetup(shop, false);
+
+  const activeRewards = await db.rewardTemplate.findMany({ where: { shop, active: true } });
+  const rewardEvaluations =
+    process.env.SCRATCH_DEBUG === "true"
+      ? activeRewards.map((reward) => ({
+          id: reward.id,
+          label: reward.label,
+          weight: reward.weight,
+          minOrderValue: reward.minOrderValue,
+          orderMeetsMinimum: order.total >= Number(reward.minOrderValue),
+          hasPositiveWeight: Number(reward.weight) > 0,
+          maxIssued: reward.maxIssued,
+          issuedCount: reward.issuedCount,
+          issueCapReached:
+            hasIssueCap(reward) && Number(reward.issuedCount) >= Number(reward.maxIssued),
+          segmentIds: reward.segmentIds || [],
+        }))
+      : undefined;
+  debugScratch(
+    "[scratch] order reward eligibility input",
+    rewardEvaluations
+      ? {
+          shop,
+          orderId: order.orderId,
+          orderTotal: order.total,
+          orderCurrency: order.totalCurrency,
+          totalSource: order.totalSource,
+          rawTotal: order.rawTotal,
+          hasCustomer: Boolean(order.customerId),
+          activeRewardCount: activeRewards.length,
+          rewards: rewardEvaluations,
+        }
+      : { shop, orderId: order.orderId, activeRewardCount: activeRewards.length },
+  );
+  let candidates = eligibleRewards(activeRewards, order.total);
+  if (!candidates.length) {
+    debugScratch("[scratch] skip: no reward passes amount, weight, and issue-cap checks", {
+      shop,
+      orderId: order.orderId,
+      orderTotal: order.total,
+      orderCurrency: order.totalCurrency,
+      rewards: rewardEvaluations,
+    });
+    return null;
+  }
 
   const configuredSegments = [...new Set(candidates.flatMap((reward) => reward.segmentIds || []))];
   if (configuredSegments.length) {
     const customerSegmentIds = new Set();
     if (order.customerId) {
       const { admin } = await unauthenticated.admin(shop);
-      for (const segmentId of configuredSegments) {
-        const response = await admin.graphql(
-          `#graphql
-          query ScratchCustomerSegmentMember($segmentId: ID!, $query: String!) {
-            customerSegmentMembers(first: 1, segmentId: $segmentId, query: $query) {
-              edges {
-                node {
-                  id
+      const membershipResults = await Promise.all(
+        configuredSegments.map(async (segmentId) => {
+          const response = await admin.graphql(
+            `#graphql
+            query ScratchCustomerSegmentMember($segmentId: ID!, $query: String!) {
+              customerSegmentMembers(first: 1, segmentId: $segmentId, query: $query) {
+                edges {
+                  node {
+                    id
+                  }
                 }
               }
-            }
-          }`,
-          {
-            variables: {
-              segmentId,
-              query: `id = ${idOf(order.customerId)}`,
+            }`,
+            {
+              variables: {
+                segmentId,
+                query: `id = ${idOf(order.customerId)}`,
+              },
             },
-          },
-        );
-        const payload = await response.json();
-        if (payload.errors?.length) {
-          console.error("[scratch] customer segment membership lookup failed", {
-            shop,
-            segmentId,
-            errors: payload.errors,
-          });
-          throw new Error("Unable to check customer segment eligibility.");
-        }
-        const members = payload.data?.customerSegmentMembers;
-        if (!members?.edges) {
-          console.error("[scratch] customer segment membership lookup returned no result", {
-            shop,
-            segmentId,
-          });
-          throw new Error("Unable to check customer segment eligibility.");
-        }
-        if (members.edges.length) {
-          customerSegmentIds.add(segmentId);
-        }
+          );
+          const payload = await response.json();
+          if (payload.errors?.length) {
+            console.error("[scratch] customer segment membership lookup failed", {
+              shop,
+              segmentId,
+              errors: payload.errors,
+            });
+            throw new Error("Unable to check customer segment eligibility.");
+          }
+          const members = payload.data?.customerSegmentMembers;
+          if (!members?.edges) {
+            console.error("[scratch] customer segment membership lookup returned no result", {
+              shop,
+              segmentId,
+            });
+            throw new Error("Unable to check customer segment eligibility.");
+          }
+          return { segmentId, matched: members.edges.length > 0 };
+        }),
+      );
+      for (const result of membershipResults) {
+        if (result.matched) customerSegmentIds.add(result.segmentId);
       }
+      debugScratch("[scratch] customer segment eligibility results", {
+        shop,
+        orderId: order.orderId,
+        results: membershipResults,
+      });
+    } else {
+      debugScratch("[scratch] segment eligibility skipped: order has no customer", {
+        shop,
+        orderId: order.orderId,
+        requiredSegmentIds: configuredSegments,
+      });
     }
+    const beforeSegmentCheck = candidates;
     candidates = candidates.filter((reward) =>
       matchesRewardSegments(reward, customerSegmentIds),
     );
+    debugScratch("[scratch] reward segment eligibility results", {
+      shop,
+      orderId: order.orderId,
+      matchedSegmentIds: [...customerSegmentIds],
+      rewards: beforeSegmentCheck.map((reward) => ({
+        id: reward.id,
+        label: reward.label,
+        requiredSegmentIds: reward.segmentIds || [],
+        matched: candidates.some((candidate) => candidate.id === reward.id),
+      })),
+    });
+  }
+  if (!candidates.length) {
+    debugScratch("[scratch] skip: customer does not match eligible reward segments", {
+      shop,
+      orderId: order.orderId,
+      orderTotal: order.total,
+      orderCurrency: order.totalCurrency,
+    });
+    return null;
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const reward = pickReward(candidates, order.total);
     if (!reward) {
-      console.log("[scratch] skip: no eligible reward");
+      debugScratch("[scratch] skip: reward selection returned no eligible reward", {
+        shop,
+        orderId: order.orderId,
+        orderTotal: order.total,
+        orderCurrency: order.totalCurrency,
+        candidates: candidates.map(({ id, label, weight, minOrderValue, maxIssued, issuedCount }) => ({
+          id,
+          label,
+          weight,
+          minOrderValue,
+          maxIssued,
+          issuedCount,
+        })),
+      });
       return null;
     }
+    debugScratch("[scratch] reward selected", {
+      shop,
+      orderId: order.orderId,
+      attempt: attempt + 1,
+      rewardId: reward.id,
+      rewardLabel: reward.label,
+      weight: reward.weight,
+      minOrderValue: reward.minOrderValue,
+      eligibleRewardCount: candidates.length,
+    });
     let reserved = false;
     if (hasIssueCap(reward)) {
       const result = await db.rewardTemplate.updateMany({
@@ -159,6 +297,14 @@ export async function issueCardForOrder(shop, orderPayload) {
         data: { issuedCount: { increment: 1 } },
       });
       if (!result.count) {
+        console.warn("[scratch] selected reward issue cap reached during reservation", {
+          shop,
+          orderId: order.orderId,
+          rewardId: reward.id,
+          rewardLabel: reward.label,
+          maxIssued: reward.maxIssued,
+          issuedCount: reward.issuedCount,
+        });
         const index = candidates.findIndex((item) => item.id === reward.id);
         if (index >= 0) candidates.splice(index, 1);
         continue;
@@ -166,11 +312,23 @@ export async function issueCardForOrder(shop, orderPayload) {
       reserved = true;
     }
     try {
-      const { total: _total, ...orderData } = order;
+      const {
+        total: _total,
+        totalCurrency: _totalCurrency,
+        totalSource: _totalSource,
+        rawTotal: _rawTotal,
+        ...orderData
+      } = order;
       const created = await db.scratchCard.create({
         data: { shop, ...orderData, rewardTemplateId: reward.id },
+        include: { rewardTemplate: true },
       });
-      console.log("[scratch] card created", order.orderId, reward.label);
+      debugScratch("[scratch] card created", {
+        shop,
+        orderId: order.orderId,
+        rewardId: reward.id,
+        rewardLabel: reward.label,
+      });
       return created;
     } catch (error) {
       if (reserved) {
@@ -182,59 +340,96 @@ export async function issueCardForOrder(shop, orderPayload) {
       if (isUniqueError(error)) {
         return db.scratchCard.findUnique({
           where: { shop_orderId: { shop, orderId: order.orderId } },
+          include: { rewardTemplate: true },
         });
       }
+      console.error("[scratch] card creation failed", {
+        shop,
+        orderId: order.orderId,
+        rewardId: reward.id,
+        error,
+      });
       throw error;
     }
   }
   return null;
 }
 
+export async function issueCardForOrder(shop, orderPayload) {
+  const startedAt = Date.now();
+  try {
+    return await issueCardForOrderInternal(shop, orderPayload);
+  } finally {
+    debugScratch("[scratch] issuance duration", {
+      shop,
+      orderId: orderPayload?.id,
+      durationMs: Date.now() - startedAt,
+    });
+  }
+}
+
 async function fetchAdminOrder(shop, orderId) {
+  const startedAt = Date.now();
   const gid = String(orderId).startsWith("gid://")
     ? orderId
     : `gid://shopify/Order/${normalizeOrderId(orderId)}`;
-  const { admin } = await unauthenticated.admin(shop);
-  const response = await admin.graphql(
-    `#graphql
-    query ScratchOrder($id: ID!) {
-      order(id: $id) {
-        id
-        name
-        email
-        createdAt
-        cancelledAt
-        test
-        fullyPaid
-        displayFinancialStatus
-        currentTotalPriceSet { shopMoney { amount } }
-        customer { id }
-      }
-    }`,
-    { variables: { id: gid } },
-  );
-  const json = await response.json();
-  if (json.errors?.length) {
-    console.error("[scratch] admin order query failed", json.errors);
-    return null;
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+    const response = await admin.graphql(
+      `#graphql
+      query ScratchOrder($id: ID!) {
+        order(id: $id) {
+          id
+          name
+          createdAt
+          cancelledAt
+          test
+          fullyPaid
+          displayFinancialStatus
+          currencyCode
+          presentmentCurrencyCode
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
+          customer { id }
+        }
+      }`,
+      { variables: { id: gid } },
+    );
+    const json = await response.json();
+    if (json.errors?.length) {
+      console.error("[scratch] admin order query failed", json.errors);
+      throw new Error("Unable to load order details from Shopify.");
+    }
+    return json.data?.order || null;
+  } finally {
+    debugScratch("[scratch] lazy Shopify order query duration", {
+      shop,
+      orderId,
+      durationMs: Date.now() - startedAt,
+    });
   }
-  return json.data?.order || null;
 }
 
 export async function issueCardFromAdminOrder(shop, orderId, viewerSub) {
   const order = await fetchAdminOrder(shop, orderId);
-  if (!order || order.cancelledAt) {
-    console.log("[scratch] skip lazy issue: missing or cancelled", orderId);
+  if (!order || order.cancelledAt || !order.fullyPaid) {
+    debugScratch("[scratch] skip lazy issue: missing, cancelled, or unpaid order", {
+      shop,
+      orderId,
+      found: Boolean(order),
+      cancelled: Boolean(order?.cancelledAt),
+      fullyPaid: Boolean(order?.fullyPaid),
+      financialStatus: order?.displayFinancialStatus,
+    });
     return null;
   }
   const viewer = customerIdFromViewer(viewerSub);
   const orderCustomer = idOf(order.customer?.id);
   if (orderCustomer && viewer && orderCustomer !== viewer) {
-    console.log("[scratch] skip lazy issue: customer mismatch");
+    debugScratch("[scratch] skip lazy issue: customer mismatch", { shop, orderId });
     return null;
   }
   if (!viewer && order.createdAt && Date.now() - new Date(order.createdAt).getTime() > 30 * 60 * 1000) {
-    console.log("[scratch] skip lazy issue: guest window expired");
+    debugScratch("[scratch] skip lazy issue: guest window expired", { shop, orderId });
     return null;
   }
   return issueCardForOrder(shop, orderPayloadFromAdmin(order));
@@ -244,21 +439,20 @@ export async function getCardForStorefront({ shop, orderId, viewerSub }) {
   const normalizedId = normalizeOrderId(orderId);
   if (!shop || !normalizedId) return null;
 
-  await ensureScratchSetup(shop);
-
   let card = await findCardForOrder(shop, normalizedId);
   if (!card) {
     try {
       card = await issueCardFromAdminOrder(shop, normalizedId, viewerSub);
     } catch (error) {
       console.error("[scratch] lazy issue failed", error);
+      throw error;
     }
   }
   if (!card || card.status === "VOID") return null;
 
   const viewer = customerIdFromViewer(viewerSub);
   if (card.customerId && viewer && idOf(card.customerId) !== viewer) return null;
-  if (!card.customerId && Date.now() - new Date(card.issuedAt).getTime() > 30 * 60 * 1000) {
+  if (!viewer && Date.now() - new Date(card.issuedAt).getTime() > 30 * 60 * 1000) {
     return null;
   }
   if (card.status === "REVEALED" && card.expiresAt && card.expiresAt <= new Date()) {
@@ -279,28 +473,33 @@ export async function voidCardForOrder(shop, orderId) {
   if (card.status === "REVEALED" && card.discountId) {
     try {
       const { admin } = await unauthenticated.admin(shop);
-      await admin.graphql(
+      const response = await admin.graphql(
         `mutation Deactivate($id: ID!) { discountCodeDeactivate(id: $id) { userErrors { message } } }`,
         { variables: { id: card.discountId } },
       );
+      const payload = await response.json();
+      const errors = [
+        ...(payload.errors || []),
+        ...(payload.data?.discountCodeDeactivate?.userErrors || []),
+      ];
+      if (!payload.data?.discountCodeDeactivate && !payload.errors?.length) {
+        throw new Error("Shopify returned no result while deactivating the discount.");
+      }
+      if (errors.length) {
+        throw new Error(errors.map((error) => error.message).join("; "));
+      }
     } catch (error) {
       console.error("[scratch] discount deactivate failed", error);
+      throw error;
     }
-
   }
   return db.scratchCard.update({ where: { id: card.id }, data: { status: "VOID" } });
 }
 
 export async function markScratchCardRedeemed(shop, orderPayload) {
-  const rawDiscountCodes = [
-    ...(Array.isArray(orderPayload?.discount_codes) ? orderPayload.discount_codes : []),
-    ...(Array.isArray(orderPayload?.discountCodes) ? orderPayload.discountCodes : []),
-  ];
-  const discountCodes = rawDiscountCodes
-    .map((item) => String(typeof item === "string" ? item : item?.code || "").trim().toUpperCase())
-    .filter(Boolean);
+  const discountCodes = scratchDiscountCodesFromOrder(orderPayload);
   const normalizedShop = shopFromDest(shop);
-  console.log("[scratch] redemption webhook received", {
+  debugScratch("[scratch] redemption webhook received", {
     shop: normalizedShop,
     orderId: orderPayload?.id,
     discountCodeCount: discountCodes.length,
@@ -334,73 +533,12 @@ export async function markScratchCardRedeemed(shop, orderPayload) {
       console.error("[scratch] redeemed discount deactivation failed", error);
     }
   }
-  console.log("[scratch] reward marked redeemed", {
+  debugScratch("[scratch] reward marked redeemed", {
     shop: normalizedShop,
     orderId: orderPayload?.id,
     cardId: card.id,
   });
   return db.scratchCard.findUnique({ where: { id: card.id }, include: { rewardTemplate: true } });
-}
-
-export async function reconcileRedeemedScratchCards(shop, cards) {
-  const candidates = cards.filter(
-    (card) => card.status === "REVEALED" && card.discountId && card.discountCode,
-  );
-  if (!candidates.length) return cards;
-
-  try {
-    const { admin } = await unauthenticated.admin(shop);
-    const response = await admin.graphql(
-      `query ScratchDiscountUsage($ids: [ID!]!) {
-        nodes(ids: $ids) {
-          ... on DiscountCodeNode {
-            id
-            codeDiscount {
-              ... on DiscountCodeBasic {
-                asyncUsageCount
-                usageLimit
-              }
-              ... on DiscountCodeFreeShipping {
-                asyncUsageCount
-                usageLimit
-              }
-            }
-          }
-        }
-      }`,
-      { variables: { ids: candidates.map((card) => card.discountId) } },
-    );
-    const payload = await response.json();
-    if (payload.errors?.length) {
-      console.error("[scratch] discount usage reconciliation failed", payload.errors);
-      return cards;
-    }
-
-    const usedIds = new Set(
-      (payload.data?.nodes || [])
-        .filter((node) => {
-          const usage = node?.codeDiscount;
-          return Number(usage?.usageLimit) > 0 && Number(usage?.asyncUsageCount) >= Number(usage.usageLimit);
-        })
-        .map((node) => node.id),
-    );
-    if (!usedIds.size) return cards;
-
-    const redeemedAt = new Date();
-    await db.scratchCard.updateMany({
-      where: { id: { in: candidates.filter((card) => usedIds.has(card.discountId)).map((card) => card.id) }, status: "REVEALED" },
-      data: { status: "REDEEMED", redeemedAt },
-    });
-    console.log("[scratch] reconciled redeemed rewards", { shop, count: usedIds.size });
-    return db.scratchCard.findMany({
-      where: { id: { in: cards.map((card) => card.id) } },
-      include: { rewardTemplate: true },
-      orderBy: { issuedAt: "desc" },
-    });
-  } catch (error) {
-    console.error("[scratch] discount usage reconciliation failed", error);
-    return cards;
-  }
 }
 
 function code() {
@@ -438,54 +576,6 @@ export async function reconcileExpiredScratchCards(shop, existingCards) {
     where: { shop, id: { in: expiredIds }, status: "EXPIRED" },
     include: { rewardTemplate: true },
   });
-  const discounts = reconciledCards.filter((card) => card.discountId);
-  if (discounts.length) {
-    try {
-      const { admin } = await unauthenticated.admin(shop);
-      for (const card of discounts) {
-        try {
-          const response = await admin.graphql(
-            `mutation DeactivateExpired($id: ID!) {
-              discountCodeDeactivate(id: $id) {
-                userErrors {
-                  message
-                }
-              }
-            }`,
-            { variables: { id: card.discountId } },
-          );
-          const payload = await response.json();
-          if (!payload.data?.discountCodeDeactivate && !payload.errors?.length) {
-            console.error("[scratch] expired discount deactivation returned no result", {
-              shop,
-              discountId: card.discountId,
-            });
-            continue;
-          }
-          const errors = [
-            ...(payload.errors || []),
-            ...(payload.data?.discountCodeDeactivate?.userErrors || []),
-          ];
-          if (errors.length) {
-            console.error("[scratch] expired discount deactivation failed", {
-              shop,
-              discountId: card.discountId,
-              errors,
-            });
-          }
-        } catch (error) {
-          console.error("[scratch] expired discount deactivation failed", {
-            shop,
-            discountId: card.discountId,
-            error,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("[scratch] expired discount deactivation failed", { shop, error });
-    }
-  }
-
   return reconciledCards;
 }
 
@@ -503,7 +593,6 @@ export async function getCustomerScratchRewards(shop, customerId) {
   cards = cards.map((card) =>
     expiredIds.has(card.id) ? { ...card, status: "EXPIRED" } : card,
   );
-  cards = await reconcileRedeemedScratchCards(shop, cards);
   return cards.map((card) => ({
     ...resultFor(card),
     token: signToken(card.id),
@@ -556,14 +645,15 @@ async function createDiscount(shop, card, reward, expiresAt) {
   return { code: discountCode, id: payload.codeDiscountNode.id };
 }
 
-export async function revealCard(token, viewerSub) {
+export async function revealCard(token, viewerSub, expectedShop) {
   const id = verifyToken(token);
-  if (!id) return { state: "invalid" };
+  const shop = shopFromDest(expectedShop);
+  if (!id || !shop) return { state: "invalid" };
   let card = await db.scratchCard.findUnique({
     where: { id },
     include: { rewardTemplate: true },
   });
-  if (!card) return { state: "invalid" };
+  if (!card || card.shop !== shop) return { state: "invalid" };
 
   const viewer = customerIdFromViewer(viewerSub);
   if (card.customerId && viewer && idOf(card.customerId) !== viewer) {

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { json } from "@remix-run/node";
 import { revealCard } from "../models/scratch.server.js";
+import { shopFromDest } from "../models/scratch-util.js";
 
 function isAuthorized(request) {
   const secret = process.env.SCRATCH_INTERNAL_SECRET || "";
@@ -18,6 +19,10 @@ function isAuthorized(request) {
 export const action = async ({ request }) => {
   if (!isAuthorized(request)) return json({ state: "invalid" }, { status: 401 });
   const body = await request.json().catch(() => ({}));
-  const result = await revealCard(body?.token, request.headers.get("x-scratch-customer"));
+  const result = await revealCard(
+    body?.token,
+    request.headers.get("x-scratch-customer"),
+    shopFromDest(request.headers.get("x-scratch-shop")),
+  );
   return json(result);
 };

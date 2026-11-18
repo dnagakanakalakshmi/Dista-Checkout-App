@@ -21,10 +21,6 @@ api_version = "2025-07"
   topics = [ "orders/paid" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/orders/create"
-  topics = [ "orders/create" ]
-
-  [[webhooks.subscriptions]]
   uri = "/webhooks/orders/cancelled"
   topics = [ "orders/cancelled" ]
 
@@ -45,3 +41,6 @@ redirect_urls = [
 url = "https://shopify-app-dista-checkout.dista.care/proxy"
 subpath = "scratch"
 prefix = "apps"
+
+[build]
+automatically_update_urls_on_dev = true

@@ -70,7 +70,7 @@ model RewardTemplate {
   config        ScratchConfig @relation(fields: [shop], references: [shop])
   cards         ScratchCard[]
 
-  @@index([shop])
+  @@index([shop, active])
 }
 
 model ScratchCard {
@@ -90,6 +90,7 @@ model ScratchCard {
   rewardTemplate   RewardTemplate @relation(fields: [rewardTemplateId], references: [id])
 
   @@unique([shop, orderId])
-  @@index([shop, status])
+  @@index([shop, status, expiresAt])
   @@index([shop, customerId, issuedAt])
+  @@index([shop, discountCode, status])
 }

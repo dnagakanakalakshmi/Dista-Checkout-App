@@ -1,6 +1,7 @@
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server.js";
 import { revealCard } from "../models/scratch.server.js";
+import { shopFromSessionToken } from "../models/scratch-util.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +32,11 @@ export const action = async ({ request }) => {
   try {
     const { sessionToken } = await authenticateAny(request);
     const body = await request.json();
-    const result = await revealCard(body?.token, sessionToken.sub);
+    const result = await revealCard(
+      body?.token,
+      sessionToken.sub,
+      shopFromSessionToken(sessionToken),
+    );
     return withCors(json(result));
   } catch (error) {
     if (error instanceof Response) return withCors(error);

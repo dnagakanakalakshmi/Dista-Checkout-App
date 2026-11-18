@@ -38,6 +38,62 @@ export function normalizeOrderId(value) {
   return idOf(value);
 }
 
+export function scratchDiscountCodesFromOrder(orderPayload) {
+  const rawCodes = [
+    ...(Array.isArray(orderPayload?.discount_codes) ? orderPayload.discount_codes : []),
+    ...(Array.isArray(orderPayload?.discountCodes) ? orderPayload.discountCodes : []),
+  ];
+  return rawCodes
+    .map((item) => String(typeof item === "string" ? item : item?.code || "").trim().toUpperCase())
+    .filter((discountCode) => discountCode.startsWith("SCR-"));
+}
+
+export function orderTotalDetailsInShopCurrency(order) {
+  const shopMoney =
+    order?.total_price_set?.shop_money ??
+    order?.current_total_price_set?.shop_money ??
+    order?.totalPriceSet?.shopMoney ??
+    order?.currentTotalPriceSet?.shopMoney;
+
+  if (
+    shopMoney?.amount !== undefined &&
+    shopMoney?.amount !== null &&
+    String(shopMoney.amount).trim() !== ""
+  ) {
+    const amount = Number(shopMoney.amount);
+    return {
+      amount: Number.isFinite(amount) ? amount : null,
+      currency: shopMoney.currency_code ?? shopMoney.currencyCode ?? order?.currency ?? null,
+      source: "shop_money",
+      rawAmount: shopMoney.amount,
+    };
+  }
+
+  const orderCurrency = String(order?.currency ?? "").toUpperCase();
+  const presentmentCurrency = String(order?.presentment_currency ?? "").toUpperCase();
+  if (orderCurrency && presentmentCurrency && orderCurrency !== presentmentCurrency) {
+    return {
+      amount: null,
+      currency: orderCurrency,
+      source: "missing_shop_money_currency_conversion",
+      rawAmount: order?.total_price ?? order?.current_total_price ?? null,
+    };
+  }
+
+  const rawAmount = order?.total_price ?? order?.current_total_price;
+  const amount = Number(rawAmount);
+  return {
+    amount: Number.isFinite(amount) ? amount : null,
+    currency: order?.currency ?? order?.presentment_currency ?? null,
+    source: order?.total_price != null ? "total_price" : "current_total_price",
+    rawAmount: rawAmount ?? null,
+  };
+}
+
+export function orderTotalInShopCurrency(order) {
+  return orderTotalDetailsInShopCurrency(order).amount;
+}
+
 export function hasIssueCap(reward) {
   return Number.isFinite(Number(reward?.maxIssued)) && Number(reward.maxIssued) > 0;
 }
@@ -125,10 +181,19 @@ export function storefrontScratchUrl(shop, token) {
 export function orderPayloadFromAdmin(order) {
   const orderId = idOf(order?.id);
   const customerGid = order?.customer?.id || null;
+  const shopMoney = order?.currentTotalPriceSet?.shopMoney;
   return {
     id: orderId,
     name: order?.name || orderId,
-    total_price: Number(order?.currentTotalPriceSet?.shopMoney?.amount ?? 0),
+    total_price: Number(shopMoney?.amount ?? 0),
+    total_price_set: {
+      shop_money: {
+        amount: shopMoney?.amount,
+        currency_code: shopMoney?.currencyCode,
+      },
+    },
+    currency: order?.currencyCode ?? null,
+    presentment_currency: order?.presentmentCurrencyCode ?? null,
     customer: customerGid
       ? { id: idOf(customerGid), admin_graphql_api_id: customerGid }
       : null,
