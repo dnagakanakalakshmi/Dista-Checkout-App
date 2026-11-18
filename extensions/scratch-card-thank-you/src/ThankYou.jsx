@@ -135,11 +135,6 @@ function ScratchThankYou() {
             setCheckingEligibility(false);
             return;
           }
-          if (data.eligibilityChecked) {
-            setStatus("No scratch card is available for this order.");
-            setCheckingEligibility(false);
-            return;
-          }
         } catch (error) {
           console.error("[scratch] status lookup failed", error);
           if (!cancelled) {

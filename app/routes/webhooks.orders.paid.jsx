@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server";
-import { issueCardForOrder, markScratchCardRedeemed } from "../models/scratch.server";
+import { markScratchCardRedeemed } from "../models/scratch.server";
 
 export const action = async ({ request }) => {
   try {
@@ -23,7 +23,6 @@ export const action = async ({ request }) => {
         matched: Boolean(card),
       });
     }
-    await issueCardForOrder(shop, payload);
     return new Response();
   } catch (error) {
     console.error("Scratch card paid webhook failed", error);

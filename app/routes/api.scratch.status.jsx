@@ -49,7 +49,7 @@ export const loader = async ({ request }) => {
       viewerSub: sessionToken.sub,
     });
     const payload = !card
-      ? { card: null, eligibilityChecked: Boolean(orderId) }
+      ? { card: null }
       : {
           card: {
             token: signToken(card.id),
