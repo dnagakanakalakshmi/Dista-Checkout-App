@@ -24,11 +24,17 @@ async function authenticateAny(request) {
   }
 }
 
-export const action = async ({ request }) => {
+export const loader = async ({ request }) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
+  return new Response(null, {
+    status: 405,
+    headers: { ...CORS_HEADERS, Allow: "POST, OPTIONS" },
+  });
+};
 
+export const action = async ({ request }) => {
   try {
     const { sessionToken } = await authenticateAny(request);
     const body = await request.json();
