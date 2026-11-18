@@ -2,7 +2,7 @@
 
 client_id = "2c7c2cd0fc2bbf7adced3353d533122e"
 name = "estimated-delivery-dates"
-application_url = "https://noticed-always-foods-blend.trycloudflare.com"
+application_url = "https://dista-checkout-app.onrender.com"
 embedded = true
 
 [build]
@@ -27,10 +27,10 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://noticed-always-foods-blend.trycloudflare.com/api/auth"
+  "https://dista-checkout-app.onrender.com/api/auth"
 ]
 
 [app_proxy]
-url = "https://noticed-always-foods-blend.trycloudflare.com/proxy"
+url = "https://dista-checkout-app.onrender.com/proxy"
 subpath = "scratch"
 prefix = "apps"

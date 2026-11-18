@@ -12,7 +12,7 @@ export default function extension() {
   render(<ScratchThankYou />, document.body);
 }
 
-const APP_URL = "https://noticed-always-foods-blend.trycloudflare.com";
+const APP_URL = "https://dista-checkout-app.onrender.com";
 const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
