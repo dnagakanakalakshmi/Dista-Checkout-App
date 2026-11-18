@@ -16,7 +16,7 @@ const APP_URL = "https://dista-checkout-app.onrender.com";
 const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner`;
-const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping-compact.svg`;
+const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
 // Only used to pick the banner height; the width itself is 100% of the column.
 const BANNER_WIDTH_DESKTOP = 500;
 const BANNER_ASSUMED_MOBILE_WIDTH = 340;
@@ -81,7 +81,6 @@ function ScratchThankYou() {
         : languageParts?.[0];
   const marketPath = marketLocale ? `/${marketLocale}` : "";
   const origin = storefrontOrigin.replace(/\/$/, "");
-  const storefrontUrl = origin ? `${origin}${marketPath}` : null;
 
   useEffect(() => {
     const unsubscribe = shopify.orderConfirmation?.subscribe?.((value) => {
@@ -249,7 +248,7 @@ function ScratchThankYou() {
             reward={reward}
             copied={copied}
             onCopy={() => setCopied(true)}
-            storefrontUrl={storefrontUrl}
+            continueShoppingUrl={getContinueShoppingUrl(reward, origin, marketPath)}
             couponId={COUPON_ID}
           />
         ) : failed ? (
@@ -288,7 +287,18 @@ function ScratchThankYou() {
   );
 }
 
-function Reward({ reward, copied, onCopy, storefrontUrl, couponId }) {
+function getContinueShoppingUrl(reward, origin, marketPath) {
+  if (!origin) return null;
+  const destination = reward.collectionHandle
+    ? `${marketPath}/collections/${encodeURIComponent(reward.collectionHandle)}`
+    : `${marketPath}/`;
+  const target = reward.code
+    ? `/discount/${encodeURIComponent(reward.code)}?redirect=${encodeURIComponent(destination)}`
+    : destination;
+  return `${origin}${target}`;
+}
+
+function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
   const expiry = reward.expiresAt
     ? new Date(reward.expiresAt).toLocaleDateString("en-GB", {
         day: "2-digit",
@@ -299,6 +309,11 @@ function Reward({ reward, copied, onCopy, storefrontUrl, couponId }) {
 
   return (
     <s-stack gap="base">
+      <s-stack gap="small">
+        <s-heading>{reward.label || "Reward unlocked"}</s-heading>
+        {reward.category ? <s-text color="subdued">On {reward.category}</s-text> : null}
+      </s-stack>
+
       {reward.code ? (
         <s-stack direction="inline" gap="small" alignItems="center">
           <s-box
@@ -326,10 +341,11 @@ function Reward({ reward, copied, onCopy, storefrontUrl, couponId }) {
         </s-stack>
       ) : null}
 
-      {storefrontUrl ? (
+      {continueShoppingUrl ? (
         <s-clickable
-          href={storefrontUrl}
+          href={continueShoppingUrl}
           inlineSize="fill"
+          blockSize="36px"
           padding="none"
           border="none"
           borderRadius="none"
