@@ -238,7 +238,11 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
     <s-stack gap="base">
       <s-stack gap="small">
         <s-heading>{reward.label || "Reward unlocked"}</s-heading>
-        {reward.category ? <s-text color="subdued">On {reward.category}</s-text> : null}
+        {reward.description || reward.category ? (
+          <s-text color="subdued">
+            {reward.description || `On ${reward.category}`}
+          </s-text>
+        ) : null}
       </s-stack>
 
       {reward.code ? (
@@ -272,7 +276,7 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
         <s-clickable
           href={continueShoppingUrl}
           inlineSize="fill"
-          blockSize="36px"
+          blockSize="auto"
           padding="none"
           border="none"
           borderRadius="none"
@@ -282,9 +286,10 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
           <s-image
             src={CONTINUE_SHOPPING_IMAGE}
             alt=""
-            aspectRatio="50/3"
+            aspectRatio="25/3"
             objectFit="cover"
             inlineSize="fill"
+            loading="eager"
           />
         </s-clickable>
       ) : null}
