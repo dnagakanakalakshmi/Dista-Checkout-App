@@ -180,46 +180,55 @@ async function issueCardForOrderInternal(shop, orderPayload) {
     const customerSegmentIds = new Set();
     if (order.customerId) {
       const { admin } = await unauthenticated.admin(shop);
-      const membershipResults = await Promise.all(
-        configuredSegments.map(async (segmentId) => {
-          const response = await admin.graphql(
-            `#graphql
-            query ScratchCustomerSegmentMember($segmentId: ID!, $query: String!) {
-              customerSegmentMembers(first: 1, segmentId: $segmentId, query: $query) {
-                edges {
-                  node {
-                    id
-                  }
-                }
-              }
-            }`,
-            {
-              variables: {
-                segmentId,
-                query: `id = ${idOf(order.customerId)}`,
-              },
-            },
-          );
-          const payload = await response.json();
-          if (payload.errors?.length) {
-            console.error("[scratch] customer segment membership lookup failed", {
-              shop,
-              segmentId,
-              errors: payload.errors,
-            });
-            throw new Error("Unable to check customer segment eligibility.");
+      const response = await admin.graphql(
+        `#graphql
+        query ScratchCustomerSegmentMembership($customerId: ID!, $segmentIds: [ID!]!) {
+          customerSegmentMembership(customerId: $customerId, segmentIds: $segmentIds) {
+            memberships {
+              segmentId
+              isMember
+            }
           }
-          const members = payload.data?.customerSegmentMembers;
-          if (!members?.edges) {
-            console.error("[scratch] customer segment membership lookup returned no result", {
-              shop,
-              segmentId,
-            });
-            throw new Error("Unable to check customer segment eligibility.");
-          }
-          return { segmentId, matched: members.edges.length > 0 };
-        }),
+        }`,
+        {
+          variables: {
+            customerId: order.customerId,
+            segmentIds: configuredSegments,
+          },
+        },
       );
+      const payload = await response.json();
+      if (payload.errors?.length) {
+        console.error("[scratch] customer segment membership lookup failed", {
+          shop,
+          segmentIds: configuredSegments,
+          errors: payload.errors,
+        });
+        throw new Error("Unable to check customer segment eligibility.");
+      }
+      const memberships = payload.data?.customerSegmentMembership?.memberships;
+      const requestedSegmentIds = new Set(configuredSegments);
+      const returnedSegmentIds = Array.isArray(memberships)
+        ? new Set(memberships.map((membership) => membership?.segmentId))
+        : new Set();
+      if (
+        !Array.isArray(memberships) ||
+        memberships.length !== configuredSegments.length ||
+        returnedSegmentIds.size !== configuredSegments.length ||
+        configuredSegments.some((segmentId) => !returnedSegmentIds.has(segmentId)) ||
+        memberships.some((membership) => !requestedSegmentIds.has(membership?.segmentId))
+      ) {
+        console.error("[scratch] customer segment membership lookup returned incomplete results", {
+          shop,
+          segmentIds: configuredSegments,
+          memberships,
+        });
+        throw new Error("Unable to check customer segment eligibility.");
+      }
+      const membershipResults = memberships.map(({ segmentId, isMember }) => ({
+        segmentId,
+        matched: isMember,
+      }));
       for (const result of membershipResults) {
         if (result.matched) customerSegmentIds.add(result.segmentId);
       }

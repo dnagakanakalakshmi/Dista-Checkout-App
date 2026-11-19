@@ -17,6 +17,7 @@ const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner?v=2`;
 const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
+const REWARD_CONFETTI_IMAGE = `${APP_URL}/scratch-reward-confetti.svg`;
 
 function readOrderId() {
   const confirmation = shopify.orderConfirmation?.value || shopify.orderConfirmation?.current;
@@ -167,7 +168,8 @@ function ScratchThankYou() {
       </s-clickable>
       <s-modal
         id={MODAL_ID}
-        heading={revealed ? "Your reward is unlocked" : "You've unlocked a surprise"}
+        heading={revealed ? "" : "You've unlocked a surprise"}
+        accessibilityLabel={revealed ? "Your reward is unlocked" : undefined}
         size="base"
       >
         {revealed ? (
@@ -236,6 +238,16 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
 
   return (
     <s-stack gap="base">
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-image
+          src={REWARD_CONFETTI_IMAGE}
+          alt=""
+          aspectRatio="16/15"
+          inlineSize="20px"
+          loading="eager"
+        />
+        <s-text type="strong">Your reward is unlocked</s-text>
+      </s-stack>
       <s-stack gap="small">
         <s-heading>{reward.label || "Reward unlocked"}</s-heading>
         {reward.description || reward.category ? (
@@ -247,16 +259,22 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
 
       {reward.code ? (
         <s-stack direction="inline" gap="small" alignItems="center">
-          <s-box
-            background="subdued"
-            border="base"
-            borderRadius="base"
-            padding="small base"
+          <s-stack
+            direction="inline"
+            alignItems="center"
+            justifyContent="center"
             inlineSize="fill"
+            minInlineSize="0"
+            blockSize="36px"
+            background="subdued"
+            border="base base dashed"
+            borderRadius="small"
+            padding="small-500 small-300"
+            overflow="hidden"
           >
             <s-clipboard-item id={couponId} text={reward.code} onCopy={onCopy} />
-            <s-text type="strong">{reward.code}</s-text>
-          </s-box>
+            <s-text type="strong" color="subdued">{reward.code}</s-text>
+          </s-stack>
           <s-button variant="secondary" commandFor={couponId} command="--copy">
             {copied ? "Copied!" : "Copy code"}
           </s-button>
@@ -276,7 +294,7 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
         <s-clickable
           href={continueShoppingUrl}
           inlineSize="fill"
-          blockSize="auto"
+          blockSize="36px"
           padding="none"
           border="none"
           borderRadius="none"
@@ -286,8 +304,9 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
           <s-image
             src={CONTINUE_SHOPPING_IMAGE}
             alt=""
-            aspectRatio="25/3"
+            aspectRatio="12/1"
             objectFit="cover"
+            borderRadius="large"
             inlineSize="fill"
             loading="eager"
           />
