@@ -17,7 +17,6 @@ const MODAL_ID = "scratch-card-thank-you-modal";
 const COUPON_ID = "scratch-thank-you-coupon";
 const BANNER_IMAGE = `${APP_URL}/api/scratch/banner?v=2`;
 const CONTINUE_SHOPPING_IMAGE = `${APP_URL}/scratch-continue-shopping.svg`;
-const REWARD_CONFETTI_IMAGE = `${APP_URL}/scratch-reward-confetti.svg`;
 
 function readOrderId() {
   const confirmation = shopify.orderConfirmation?.value || shopify.orderConfirmation?.current;
@@ -63,13 +62,14 @@ function ScratchThankYou() {
     }
     let cancelled = false;
     (async () => {
-      for (let attempt = 0; attempt < 15 && !cancelled; attempt += 1) {
+      for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
         try {
           const jwt = await shopify.sessionToken.get();
           const response = await fetch(
             `${APP_URL}/api/scratch/status?orderId=${encodeURIComponent(orderId)}`,
             { headers: { Authorization: `Bearer ${jwt}` } },
           );
+          if (!response.ok) throw new Error(`Status lookup failed (${response.status})`);
           const data = await response.json();
           if (data.card?.token) {
             setCard(data.card);
@@ -86,8 +86,8 @@ function ScratchThankYou() {
           }
           return;
         }
-        if (attempt < 14) {
-          await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 150 : 350));
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 500));
         }
       }
       if (!cancelled) {
@@ -137,7 +137,7 @@ function ScratchThankYou() {
         borderRadius="base"
         padding="base"
       >
-        <s-skeleton-paragraph content="Checking reward eligibility" />
+        <s-skeleton-paragraph content="Checking if a scratch card is available" />
       </s-box>
     );
   }
@@ -168,8 +168,7 @@ function ScratchThankYou() {
       </s-clickable>
       <s-modal
         id={MODAL_ID}
-        heading={revealed ? "" : "You've unlocked a surprise"}
-        accessibilityLabel={revealed ? "Your reward is unlocked" : undefined}
+        heading={revealed ? "Your reward is unlocked" : "You've unlocked a surprise"}
         size="base"
       >
         {revealed ? (
@@ -238,16 +237,6 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
 
   return (
     <s-stack gap="base">
-      <s-stack direction="inline" gap="small-200" alignItems="center">
-        <s-image
-          src={REWARD_CONFETTI_IMAGE}
-          alt=""
-          aspectRatio="16/15"
-          inlineSize="20px"
-          loading="eager"
-        />
-        <s-text type="strong">Your reward is unlocked</s-text>
-      </s-stack>
       <s-stack gap="small">
         <s-heading>{reward.label || "Reward unlocked"}</s-heading>
         {reward.description || reward.category ? (
@@ -265,7 +254,7 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
             justifyContent="center"
             inlineSize="fill"
             minInlineSize="0"
-            blockSize="36px"
+            blockSize="48px"
             background="subdued"
             border="base base dashed"
             borderRadius="small"
@@ -275,8 +264,13 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
             <s-clipboard-item id={couponId} text={reward.code} onCopy={onCopy} />
             <s-text type="strong" color="subdued">{reward.code}</s-text>
           </s-stack>
-          <s-button variant="secondary" commandFor={couponId} command="--copy">
-            {copied ? "Copied!" : "Copy code"}
+          <s-button
+            variant="secondary"
+            commandFor={couponId}
+            command="--copy"
+            blockSize="48px"
+          >
+            {copied ? "Copied!" : "Copy Code"}
           </s-button>
         </s-stack>
       ) : (
@@ -306,8 +300,8 @@ function Reward({ reward, copied, onCopy, continueShoppingUrl, couponId }) {
             alt=""
             aspectRatio="12/1"
             objectFit="cover"
-            borderRadius="large"
             inlineSize="fill"
+            borderRadius="small"
             loading="eager"
           />
         </s-clickable>

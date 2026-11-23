@@ -51,13 +51,14 @@ function ScratchOrderStatus() {
     }
     let cancelled = false;
     (async () => {
-      for (let attempt = 0; attempt < 15 && !cancelled; attempt += 1) {
+      for (let attempt = 0; attempt < 3 && !cancelled; attempt += 1) {
         try {
           const jwt = await shopify.sessionToken.get();
           const response = await fetch(
             `${APP_URL}/api/scratch/status?orderId=${encodeURIComponent(orderId)}`,
             { headers: { Authorization: `Bearer ${jwt}` } },
           );
+          if (!response.ok) throw new Error(`Status lookup failed (${response.status})`);
           const data = await response.json();
           if (data.card?.token) {
             setCard(data.card);
@@ -74,8 +75,8 @@ function ScratchOrderStatus() {
           }
           return;
         }
-        if (attempt < 14) {
-          await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 150 : 350));
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 500));
         }
       }
       if (!cancelled) {
@@ -126,7 +127,7 @@ function ScratchOrderStatus() {
         borderRadius="base"
         padding="base"
       >
-        <s-skeleton-paragraph content="Checking reward eligibility" />
+        <s-skeleton-paragraph content="Checking if a scratch card is available" />
       </s-box>
     );
   }
