@@ -6,6 +6,7 @@ import { signToken, verifyToken } from "./scratch-token.js";
 import { DEFAULT_SCRATCH_REWARDS, defaultRewardId } from "./scratch-defaults.js";
 import {
   expiryDateFromConfig,
+  expiryForIssuedCard,
   hasIssueCap,
   customerIdFromViewer,
   customerIdLookupValues,
@@ -23,6 +24,17 @@ export { signToken, verifyToken } from "./scratch-token.js";
 export { resultFor } from "./scratch-util.js";
 
 const isUniqueError = (error) => error?.code === "P2002";
+
+async function ensureIssuedExpiry(card) {
+  if (card?.status !== "ISSUED" || card.expiresAt) return card;
+  const expiresAt = expiryForIssuedCard(card);
+  if (!expiresAt) return card;
+  await db.scratchCard.updateMany({
+    where: { id: card.id, status: "ISSUED", expiresAt: null },
+    data: { expiresAt },
+  });
+  return { ...card, expiresAt };
+}
 
 function debugScratch(message, details) {
   if (process.env.SCRATCH_DEBUG === "true") console.info(message, details);
@@ -328,8 +340,15 @@ async function issueCardForOrderInternal(shop, orderPayload) {
         rawTotal: _rawTotal,
         ...orderData
       } = order;
+      const issuedAt = new Date();
       const created = await db.scratchCard.create({
-        data: { shop, ...orderData, rewardTemplateId: reward.id },
+        data: {
+          shop,
+          ...orderData,
+          issuedAt,
+          expiresAt: expiryDateFromConfig(reward, issuedAt),
+          rewardTemplateId: reward.id,
+        },
         include: { rewardTemplate: true },
       });
       debugScratch("[scratch] card created", {
@@ -464,7 +483,12 @@ export async function getCardForStorefront({ shop, orderId, viewerSub }) {
   if (!viewer && Date.now() - new Date(card.issuedAt).getTime() > 30 * 60 * 1000) {
     return null;
   }
-  if (card.status === "REVEALED" && card.expiresAt && card.expiresAt <= new Date()) {
+  card = await ensureIssuedExpiry(card);
+  if (
+    ["ISSUED", "REVEALED"].includes(card.status)
+    && card.expiresAt
+    && card.expiresAt <= new Date()
+  ) {
     const [reconciledCard] = await reconcileExpiredScratchCards(shop, [card]);
     card =
       reconciledCard ||
@@ -559,12 +583,16 @@ export async function reconcileExpiredScratchCards(shop, existingCards) {
   const cards =
     existingCards ||
     (await db.scratchCard.findMany({
-      where: { shop, status: "REVEALED", expiresAt: { lte: now } },
+      where: {
+        shop,
+        status: { in: ["ISSUED", "REVEALED"] },
+        expiresAt: { lte: now },
+      },
     }));
   const expiredCards = cards.filter(
     (card) =>
       card.shop === shop &&
-      card.status === "REVEALED" &&
+      ["ISSUED", "REVEALED"].includes(card.status) &&
       card.expiresAt &&
       card.expiresAt <= now,
   );
@@ -575,7 +603,7 @@ export async function reconcileExpiredScratchCards(shop, existingCards) {
     where: {
       shop,
       id: { in: expiredIds },
-      status: "REVEALED",
+      status: { in: ["ISSUED", "REVEALED"] },
       expiresAt: { lte: now },
     },
     data: { status: "EXPIRED" },
@@ -597,6 +625,7 @@ export async function getCustomerScratchRewards(shop, customerId) {
     include: { rewardTemplate: true },
     orderBy: { issuedAt: "desc" },
   });
+  cards = await Promise.all(cards.map(ensureIssuedExpiry));
   const expiredCards = await reconcileExpiredScratchCards(shop, cards);
   const expiredIds = new Set(expiredCards.map((card) => card.id));
   cards = cards.map((card) =>
@@ -670,8 +699,16 @@ export async function revealCard(token, viewerSub, expectedShop) {
   }
 
   if (card.status !== "ISSUED") return resultFor(card);
+  card = await ensureIssuedExpiry(card);
   const revealedAt = new Date();
-  const expiresAt = expiryDateFromConfig(card.rewardTemplate, revealedAt);
+  const expiresAt = card.expiresAt || expiryDateFromConfig(card.rewardTemplate, card.issuedAt);
+  if (expiresAt <= revealedAt) {
+    await db.scratchCard.updateMany({
+      where: { id, status: "ISSUED" },
+      data: { status: "EXPIRED", expiresAt },
+    });
+    return resultFor({ ...card, status: "EXPIRED", expiresAt });
+  }
   const claimed = await db.scratchCard.updateMany({
     where: { id, status: "ISSUED" },
     data: { status: "REVEALED", revealedAt, expiresAt },
@@ -694,7 +731,7 @@ export async function revealCard(token, viewerSub, expectedShop) {
   } catch (error) {
     await db.scratchCard.updateMany({
       where: { id, status: "REVEALED", discountCode: null },
-      data: { status: "ISSUED", revealedAt: null, expiresAt: null },
+      data: { status: "ISSUED", revealedAt: null },
     });
     throw error;
   }

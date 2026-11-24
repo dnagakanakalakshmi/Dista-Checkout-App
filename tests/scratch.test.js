@@ -129,6 +129,22 @@ test("resultFor never re-issues a revealed or void card", () => {
     state: "issued",
     ...displayFields,
   });
+  assert.deepEqual(
+    resultFor({
+      status: "ISSUED",
+      issuedAt: new Date("2027-10-28T12:00:00.000Z"),
+      rewardTemplate: {
+        ...displayFields,
+        expiryValue: 48,
+        expiryUnit: "HOURS",
+      },
+    }),
+    {
+      state: "issued",
+      ...displayFields,
+      expiresAt: new Date("2027-10-30T12:00:00.000Z"),
+    },
+  );
   assert.equal(resultFor({ status: "VOID" }).state, "void");
   assert.equal(resultFor({ status: "EXPIRED" }).state, "expired");
   assert.deepEqual(
@@ -162,7 +178,7 @@ test("resultFor never re-issues a revealed or void card", () => {
   );
 });
 
-test("expiry duration starts at reveal time and supports calendar months", () => {
+test("expiry duration supports calendar months", () => {
   const start = new Date("2026-01-31T12:00:00.000Z");
   assert.equal(
     expiryDateFromConfig({ expiryValue: 48, expiryUnit: "HOURS" }, start).toISOString(),

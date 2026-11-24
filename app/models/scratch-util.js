@@ -127,6 +127,13 @@ export function expiryDateFromConfig(config = {}, start = new Date()) {
   return expiresAt;
 }
 
+export function expiryForIssuedCard(card) {
+  if (card?.status !== "ISSUED") return null;
+  if (card.expiresAt) return card.expiresAt;
+  if (!card.issuedAt || !card.rewardTemplate) return null;
+  return expiryDateFromConfig(card.rewardTemplate, card.issuedAt);
+}
+
 export function resultFor(card) {
   if (!card) return { state: "invalid" };
   const template = card.rewardTemplate;
@@ -139,7 +146,15 @@ export function resultFor(card) {
     type: template?.type,
     value: template?.value,
   };
-  if (card.status === "ISSUED") return { state: "issued", ...display };
+  if (card.status === "ISSUED") {
+    const expiresAt = expiryForIssuedCard(card);
+    const isExpired = expiresAt && new Date(expiresAt) <= new Date();
+    return {
+      state: isExpired ? "expired" : "issued",
+      ...display,
+      ...(expiresAt ? { expiresAt } : {}),
+    };
+  }
   if (card.status === "REDEEMED") {
     return {
       state: "redeemed",
